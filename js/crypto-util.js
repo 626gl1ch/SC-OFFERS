@@ -3,6 +3,20 @@
  * Uses standard W3C Web Crypto API (supported across all modern browsers)
  */
 
+// One-time automatic purge of legacy sample/placeholder offers from browser storage
+(function purgeLegacyPlaceholders() {
+  try {
+    const CLEAN_FLAG = 'sc_offers_v3_clean';
+    if (localStorage.getItem(CLEAN_FLAG) !== 'true') {
+      localStorage.removeItem('sc_offers_custom_data');
+      localStorage.removeItem('sc_offers_guest_tracking');
+      localStorage.removeItem('sc_offers_started_ids');
+      sessionStorage.removeItem('sc_detected_country');
+      localStorage.setItem(CLEAN_FLAG, 'true');
+    }
+  } catch (e) {}
+})();
+
 const SC_SECURITY = {
   // SHA-256 hash of admin password "554#2Dani.G"
   ADMIN_HASH: '4fe769854cc2b6abb69d59b3a78e33ac119de924dafd6e54521af00fa8c8feb0',

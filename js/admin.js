@@ -48,28 +48,40 @@ class AdminPortalApp {
   }
 
   sanitizeOffers(list) {
-    const SAMPLE_IDS = new Set(['cpa-001', 'cpa-002', 'cpa-003', 'cpa-004', 'cpa-005']);
-    const SAMPLE_TITLES = new Set([
-      'CashApp $750 Reward Program',
-      'Monzo UK Banking Starter Bonus',
-      'NordVPN 30-Day Risk-Free Trial',
-      'Trade Republic Investment Bonus',
-      'Crypto.com Global Visa Card Sign-Up'
-    ]);
     if (!Array.isArray(list)) return [];
-    return list.filter(o => o && !SAMPLE_IDS.has(o.id) && !SAMPLE_TITLES.has(o.title));
+    const SAMPLE_IDS = new Set(['cpa-001', 'cpa-002', 'cpa-003', 'cpa-004', 'cpa-005']);
+    return list.filter(o => {
+      if (!o || !o.title) return false;
+      if (SAMPLE_IDS.has(o.id)) return false;
+      const t = (o.title || '').toLowerCase();
+      if (t.includes('cashapp') || t.includes('monzo') || t.includes('nordvpn') || t.includes('trade republic') || t.includes('crypto.com')) {
+        return false;
+      }
+      const l = (o.link || '').toLowerCase();
+      if (l.includes('example.com')) return false;
+      return true;
+    });
   }
 
   async loadData() {
     try {
       const localCustom = localStorage.getItem('sc_offers_custom_data');
+      let customOffers = [];
       if (localCustom) {
-        this.offers = this.sanitizeOffers(JSON.parse(localCustom));
+        try {
+          customOffers = this.sanitizeOffers(JSON.parse(localCustom));
+        } catch (e) {}
+      }
+
+      if (customOffers.length > 0) {
+        this.offers = customOffers;
       } else {
-        const res = await fetch(`data/offers.json?_t=${Date.now()}`);
+        const res = await fetch(`data/offers.json?_t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
           const fetched = await res.json();
           this.offers = this.sanitizeOffers(fetched);
+        } else {
+          this.offers = [];
         }
       }
     } catch (e) {
