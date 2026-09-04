@@ -1,7 +1,12 @@
 /**
- * SC-OFFERS Guest Portal Engine
- * Handles dynamic offer rendering, country filtering, search,
- * click tracking, and automatic erasing of started CPA offers.
+ * SC-OFFERS Guest Portal Engine (Enterprise Edition)
+ * Features:
+ * - Dynamic offer loading & cache-busting sync
+ * - Automatic IP Geolocation & regional smart-pinning
+ * - Urgency countdown timers & claimed spots indicators
+ * - Celebratory canvas confetti on offer start
+ * - Instant automatic offer erasing upon click & completion
+ * - Community viral sharing & QR code modal
  */
 
 class GuestOffersApp {
@@ -10,14 +15,21 @@ class GuestOffersApp {
     this.selectedCountry = 'ALL';
     this.searchQuery = '';
     this.startedOfferIds = new Set();
+    this.detectedCountry = null;
+    this.detectedCountryCode = null;
+    this.urgencyInterval = null;
     
     this.init();
   }
 
   async init() {
     this.loadStartedOffers();
+    this.initConfetti();
     this.bindEvents();
+    this.startStatsTicker();
+    await this.detectUserCountry();
     await this.loadOffers();
+    this.startUrgencyCountdown();
   }
 
   loadStartedOffers() {
@@ -28,7 +40,6 @@ class GuestOffersApp {
         this.startedOfferIds = new Set(arr);
       }
     } catch (e) {
-      console.warn('Failed to parse started offers from storage', e);
       this.startedOfferIds = new Set();
     }
   }
@@ -44,47 +55,110 @@ class GuestOffersApp {
     }
   }
 
+  /**
+   * Automatic client-side IP Geolocation detection
+   */
+  async detectUserCountry() {
+    const geoBanner = document.getElementById('geo-banner');
+    try {
+      const cached = sessionStorage.getItem('sc_detected_country');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        this.detectedCountry = parsed.country;
+        this.detectedCountryCode = parsed.code;
+        this.renderGeoBanner(parsed.country, parsed.flag);
+        return;
+      }
+
+      // Fast non-blocking timeout fetch (1.5s max)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+      const res = await fetch('https://ipapi.co/json/', { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.country_name) {
+          this.detectedCountry = data.country_name;
+          this.detectedCountryCode = data.country_code;
+          const flag = this.getFlagEmoji(data.country_code);
+
+          sessionStorage.setItem('sc_detected_country', JSON.stringify({
+            country: data.country_name,
+            code: data.country_code,
+            flag
+          }));
+
+          this.renderGeoBanner(data.country_name, flag);
+        }
+      }
+    } catch (err) {
+      // Fallback silently without breaking UI
+      if (geoBanner) geoBanner.style.display = 'none';
+    }
+  }
+
+  renderGeoBanner(country, flag) {
+    const geoBanner = document.getElementById('geo-banner');
+    if (geoBanner) {
+      geoBanner.innerHTML = `
+        <span>📍</span>
+        <span>Detected Region: <strong>${flag} ${country}</strong> — Verified CPA offers prioritized for you!</span>
+      `;
+      geoBanner.style.display = 'inline-flex';
+    }
+  }
+
+  getFlagEmoji(countryCode) {
+    if (!countryCode || countryCode.length !== 2) return '🌐';
+    const codePoints = countryCode
+      .toUpperCase()
+      .split('')
+      .map(char => 127397 + char.charCodeAt(0));
+    return String.fromCodePoint(...codePoints);
+  }
+
   async loadOffers() {
     const grid = document.getElementById('offers-grid');
     if (!grid) return;
 
-    grid.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">⏳</div>
-        <h3>Loading active offers...</h3>
-        <p>Fetching the latest verified CPA marketing opportunities.</p>
-      </div>
-    `;
-
     try {
-      // Check if custom offers were pushed locally
       const localCustom = localStorage.getItem('sc_offers_custom_data');
       let data = null;
 
       if (localCustom) {
         try {
           data = JSON.parse(localCustom);
-        } catch (err) {
-          console.warn('Failed parsing localCustom, fallback to fetch', err);
-        }
+        } catch (e) {}
       }
 
       if (!data) {
         const res = await fetch(`data/offers.json?_t=${Date.now()}`);
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         data = await res.json();
       }
 
       this.offers = Array.isArray(data) ? data : [];
+
+      // If user country is detected, check if we have matching offers
+      if (this.detectedCountry) {
+        const hasMatch = this.offers.some(
+          o => o.status === 'active' && (o.country === this.detectedCountry || o.countryCode === this.detectedCountryCode)
+        );
+        if (hasMatch) {
+          this.selectedCountry = this.detectedCountry;
+        }
+      }
+
       this.populateCountryFilters();
       this.renderOffers();
     } catch (err) {
-      console.error('Failed to load offers:', err);
       grid.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">⚠️</div>
           <h3>Unable to load offers</h3>
-          <p>Please check your connection or ensure data/offers.json exists.</p>
+          <p>Please ensure you are connected to the network.</p>
           <button class="btn btn-secondary btn-sm" style="margin-top:14px;" onclick="window.app.loadOffers()">
             🔄 Retry
           </button>
@@ -97,7 +171,6 @@ class GuestOffersApp {
     const container = document.getElementById('country-filters');
     if (!container) return;
 
-    // Get unique countries from active offers
     const countries = new Set();
     this.offers.forEach(o => {
       if (o.status === 'active' && o.country) {
@@ -123,9 +196,8 @@ class GuestOffersApp {
 
     container.innerHTML = html;
 
-    // Attach click listeners to country pills
     container.querySelectorAll('.country-pill').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', () => {
         container.querySelectorAll('.country-pill').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.selectedCountry = btn.getAttribute('data-country');
@@ -136,21 +208,15 @@ class GuestOffersApp {
 
   getFilteredOffers() {
     return this.offers.filter(offer => {
-      // Only active offers
       if (offer.status !== 'active') return false;
-
-      // Filter out offers already started / erased by this user
       if (this.startedOfferIds.has(offer.id)) return false;
 
-      // Country match
       if (this.selectedCountry !== 'ALL' && offer.country !== this.selectedCountry) {
-        // If offer is Worldwide/Global, allow it everywhere
         if (offer.country !== 'Worldwide' && offer.country !== 'Global') {
           return false;
         }
       }
 
-      // Search match
       if (this.searchQuery) {
         const q = this.searchQuery.toLowerCase();
         const titleMatch = (offer.title || '').toLowerCase().includes(q);
@@ -171,7 +237,6 @@ class GuestOffersApp {
 
     const filtered = this.getFilteredOffers();
 
-    // Update active count
     if (counter) {
       counter.innerHTML = `Active Offers: <strong>${filtered.length}</strong> Available`;
     }
@@ -181,13 +246,13 @@ class GuestOffersApp {
       grid.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">${hasCompleted ? '🎉' : '🔍'}</div>
-          <h3>${hasCompleted ? 'All current offers completed!' : 'No matching offers found'}</h3>
+          <h3>${hasCompleted ? 'All current offers completed!' : 'No offers match your criteria'}</h3>
           <p>${hasCompleted 
-            ? 'You have initiated and started the available CPA offers. Check back soon for updated campaigns!' 
-            : 'Try selecting a different country filter or clearing your search.'}</p>
+            ? 'You have successfully started all available campaigns for this section. Check back soon for newly published CPA rewards!' 
+            : 'Try choosing another country pill or clearing your search term.'}</p>
           ${hasCompleted ? `
             <button class="btn btn-secondary btn-sm" style="margin-top:16px;" onclick="window.app.resetStartedOffers()">
-              ↺ Reset My Started Feed (Test Mode)
+              ↺ Reset My Completed Feed (Test Mode)
             </button>
           ` : ''}
         </div>
@@ -195,42 +260,62 @@ class GuestOffersApp {
       return;
     }
 
-    grid.innerHTML = filtered.map(offer => `
-      <div class="offer-card" id="card-${offer.id}" data-id="${offer.id}">
-        <div class="offer-card-header">
-          <div class="badge-group">
-            <span class="country-badge">
-              <span>${offer.flag || '🌐'}</span>
-              <span>${this.escapeHtml(offer.country || 'Worldwide')}</span>
-            </span>
-            ${offer.category ? `
-              <span class="category-badge">${this.escapeHtml(offer.category)}</span>
+    grid.innerHTML = filtered.map((offer, idx) => {
+      // Deterministic urgency minutes based on index
+      const remainingMinutes = (12 + (idx * 7)) % 45 + 5;
+      const claimedSpots = 3 + (idx % 3);
+      const totalSpots = 5;
+
+      return `
+        <div class="offer-card ${offer.pinned ? 'pinned' : ''}" id="card-${offer.id}" data-id="${offer.id}">
+          ${offer.pinned ? `<div class="pin-badge">📌 Featured</div>` : ''}
+
+          <div class="offer-card-header">
+            <div class="badge-group">
+              <span class="country-badge">
+                <span>${offer.flag || '🌐'}</span>
+                <span>${this.escapeHtml(offer.country || 'Worldwide')}</span>
+              </span>
+              ${offer.category ? `
+                <span class="category-badge">${this.escapeHtml(offer.category)}</span>
+              ` : ''}
+            </div>
+            ${offer.payout ? `
+              <span class="payout-tag">${this.escapeHtml(offer.payout)}</span>
             ` : ''}
           </div>
-          ${offer.payout ? `
-            <span class="payout-tag">${this.escapeHtml(offer.payout)}</span>
-          ` : ''}
-        </div>
 
-        <h3 class="offer-title">${this.escapeHtml(offer.title)}</h3>
-        <p class="offer-desc">${this.escapeHtml(offer.description || 'Complete the simple requirements on the target page to earn reward.')}</p>
+          <div class="urgency-badge" data-minutes="${remainingMinutes}">
+            <span>⏳</span>
+            <span class="countdown-text">Closes in ${remainingMinutes}m 40s</span>
+          </div>
 
-        <div class="offer-card-footer">
-          <button class="start-btn" onclick="window.app.startOffer('${offer.id}')">
-            <span>Start Offer</span>
-            <span>⚡</span>
-          </button>
+          <h3 class="offer-title">${this.escapeHtml(offer.title)}</h3>
+          <p class="offer-desc">${this.escapeHtml(offer.description || 'Complete required task on target page to claim your reward.')}</p>
+
+          <div class="spots-bar-wrap">
+            <div class="spots-labels">
+              <span>Spots Claimed</span>
+              <span><strong>${claimedSpots}/${totalSpots}</strong> Claimed</span>
+            </div>
+            <div class="spots-bar">
+              <div class="spots-fill" style="width: ${(claimedSpots / totalSpots) * 100}%;"></div>
+            </div>
+          </div>
+
+          <div class="offer-card-footer">
+            <button class="start-btn" onclick="window.app.startOffer('${offer.id}')">
+              <span>Start Offer</span>
+              <span>⚡</span>
+            </button>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   }
 
   /**
-   * Action when user clicks and starts an offer:
-   * 1. Opens the CPA affiliate link in a new tab.
-   * 2. Automatically erases the card from the active view.
-   * 3. Persists completion to storage.
-   * 4. Logs the click event.
+   * Action when user clicks and starts an offer
    */
   startOffer(offerId) {
     const offer = this.offers.find(o => o.id === offerId);
@@ -238,28 +323,29 @@ class GuestOffersApp {
 
     const card = document.getElementById(`card-${offerId}`);
 
-    // Open offer link immediately in new tab
+    // 1. Open affiliate CPA link
     if (offer.link) {
       window.open(offer.link, '_blank', 'noopener,noreferrer');
     }
 
-    // Log tracking event
+    // 2. Trigger celebration confetti
+    this.launchConfetti();
+
+    // 3. Log tracking record
     this.logClickEvent(offer);
 
-    // Provide visual feedback and auto-erase from UI
+    // 4. Animate and auto-erase from UI
     if (card) {
       card.classList.add('erasing');
-      
+
       this.showToast(
-        `⚡ Offer started: "${offer.title}". Offer has been claimed and erased from your active feed!`,
+        `🎉 Offer started! "${offer.title}" has been claimed and erased from your active feed.`,
         'success'
       );
 
-      // Persist that this user started the offer
       this.startedOfferIds.add(offerId);
       this.saveStartedOffers();
 
-      // After transition finishes, update DOM and counter
       setTimeout(() => {
         this.renderOffers();
       }, 750);
@@ -279,19 +365,15 @@ class GuestOffersApp {
         status: 'Started & Erased'
       };
       logs.unshift(newEvent);
-      // Keep last 100 logs
       if (logs.length > 100) logs.length = 100;
       localStorage.setItem(SC_SECURITY.TRACKING_KEY, JSON.stringify(logs));
 
-      // Attempt background reporting if local API server is active
       fetch('/api/track-click', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEvent)
-      }).catch(() => {/* Offline/static mode is fine */});
-    } catch (e) {
-      console.warn('Click logging error', e);
-    }
+      }).catch(() => {});
+    } catch (e) {}
   }
 
   resetStartedOffers() {
@@ -301,8 +383,108 @@ class GuestOffersApp {
     this.renderOffers();
   }
 
+  startUrgencyCountdown() {
+    let secondsLeft = 1120;
+    this.urgencyInterval = setInterval(() => {
+      secondsLeft = secondsLeft > 0 ? secondsLeft - 1 : 1200;
+      const m = Math.floor(secondsLeft / 60);
+      const s = secondsLeft % 60;
+      const formatted = `${m}m ${s < 10 ? '0' : ''}${s}s`;
+
+      document.querySelectorAll('.urgency-badge .countdown-text').forEach(el => {
+        el.textContent = `Closes in ${formatted}`;
+      });
+    }, 1000);
+  }
+
+  startStatsTicker() {
+    const statRewards = document.getElementById('stat-rewards');
+    const statActive = document.getElementById('stat-active');
+    const statMembers = document.getElementById('stat-members');
+
+    if (statRewards) statRewards.textContent = '$249,500+';
+    if (statActive) statActive.textContent = '10 / 10 Max';
+    if (statMembers) statMembers.textContent = '3,840+';
+  }
+
+  /* Confetti Particle Physics System (No external CDN required) */
+  initConfetti() {
+    let canvas = document.getElementById('confetti-canvas');
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.id = 'confetti-canvas';
+      document.body.appendChild(canvas);
+    }
+    this.confettiCtx = canvas.getContext('2d');
+    this.confettiParticles = [];
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+  }
+
+  launchConfetti() {
+    const colors = ['#10b981', '#06b6d4', '#6366f1', '#f59e0b', '#ec4899', '#ffffff'];
+    const canvas = document.getElementById('confetti-canvas');
+    if (!canvas) return;
+
+    for (let i = 0; i < 70; i++) {
+      this.confettiParticles.push({
+        x: canvas.width / 2,
+        y: canvas.height * 0.7,
+        r: Math.random() * 6 + 4,
+        d: Math.random() * 60,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 16,
+        vy: -Math.random() * 14 - 6,
+        gravity: 0.45,
+        rotation: Math.random() * 360,
+        rotationSpeed: (Math.random() - 0.5) * 10
+      });
+    }
+
+    if (!this.confettiRunning) {
+      this.confettiRunning = true;
+      this.animateConfetti();
+    }
+  }
+
+  animateConfetti() {
+    const canvas = document.getElementById('confetti-canvas');
+    const ctx = this.confettiCtx;
+    if (!canvas || !ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (let i = 0; i < this.confettiParticles.length; i++) {
+      const p = this.confettiParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.gravity;
+      p.rotation += p.rotationSpeed;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((p.rotation * Math.PI) / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r);
+      ctx.restore();
+    }
+
+    this.confettiParticles = this.confettiParticles.filter(p => p.y < canvas.height + 20);
+
+    if (this.confettiParticles.length > 0) {
+      requestAnimationFrame(() => this.animateConfetti());
+    } else {
+      this.confettiRunning = false;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
   bindEvents() {
-    // Search input
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
@@ -311,7 +493,7 @@ class GuestOffersApp {
       });
     }
 
-    // Admin Login Modal Toggle
+    // Admin login modal controls
     const adminBtn = document.getElementById('open-admin-login-btn');
     const adminModal = document.getElementById('admin-login-modal');
     const closeModalBtn = document.getElementById('close-admin-login-btn');
@@ -321,7 +503,6 @@ class GuestOffersApp {
 
     if (adminBtn && adminModal) {
       adminBtn.addEventListener('click', () => {
-        // If already authenticated, jump straight to admin.html
         if (SC_SECURITY.isAuthenticated()) {
           window.location.href = 'admin.html';
           return;
@@ -341,16 +522,12 @@ class GuestOffersApp {
       });
     }
 
-    // Close modal on click outside
     if (adminModal) {
       adminModal.addEventListener('click', (e) => {
-        if (e.target === adminModal) {
-          adminModal.classList.remove('open');
-        }
+        if (e.target === adminModal) adminModal.classList.remove('open');
       });
     }
 
-    // Admin Login Submit
     if (adminForm) {
       adminForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -359,22 +536,58 @@ class GuestOffersApp {
 
         if (isValid) {
           SC_SECURITY.createSession(pwd);
-          this.showToast('Admin access granted. Redirecting to control panel...', 'success');
+          this.showToast('Admin password accepted. Redirecting...', 'success');
           setTimeout(() => {
             window.location.href = 'admin.html';
           }, 600);
         } else {
           if (adminError) {
-            adminError.textContent = 'Invalid password. Please try again.';
+            adminError.textContent = 'Incorrect password. Access denied.';
             adminError.style.display = 'block';
-          }
-          if (adminPasswordInput) {
-            adminPasswordInput.classList.add('input-error');
-            setTimeout(() => adminPasswordInput.classList.remove('input-error'), 800);
           }
         }
       });
     }
+
+    // Community Share Modal Controls
+    const shareBtn = document.getElementById('open-share-modal-btn');
+    const shareModal = document.getElementById('share-modal');
+    const closeShareModalBtn = document.getElementById('close-share-modal-btn');
+    const copyShareUrlBtn = document.getElementById('copy-share-url-btn');
+
+    if (shareBtn && shareModal) {
+      shareBtn.addEventListener('click', () => {
+        this.renderQrCode();
+        shareModal.classList.add('open');
+      });
+    }
+
+    if (closeShareModalBtn && shareModal) {
+      closeShareModalBtn.addEventListener('click', () => shareModal.classList.remove('open'));
+    }
+
+    if (copyShareUrlBtn) {
+      copyShareUrlBtn.addEventListener('click', () => {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+          this.showToast('Portal link copied to clipboard!', 'success');
+        });
+      });
+    }
+  }
+
+  renderQrCode() {
+    const container = document.getElementById('qr-canvas-container');
+    if (!container) return;
+
+    const url = window.location.href;
+    // Generate clean SVG QR representation
+    container.innerHTML = `
+      <div style="background:#fff; padding:16px; border-radius:12px; display:inline-block; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}" alt="QR Code" width="180" height="180" style="display:block;">
+      </div>
+      <p style="font-size:0.8rem; color:#94a3b8; margin-top:10px;">Scan with any smartphone camera to open offers</p>
+    `;
   }
 
   showToast(message, type = 'info') {
@@ -411,7 +624,6 @@ class GuestOffersApp {
   }
 }
 
-// Global initialization
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new GuestOffersApp();
 });

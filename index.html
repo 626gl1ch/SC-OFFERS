@@ -20,7 +20,11 @@
       </a>
 
       <div class="nav-actions">
-        <button id="open-admin-login-btn" class="btn btn-admin">
+        <button id="open-share-modal-btn" class="btn btn-secondary btn-sm" title="Share with community via QR Code or Socials">
+          <span>📲</span>
+          <span>Share / QR</span>
+        </button>
+        <button id="open-admin-login-btn" class="btn btn-admin btn-sm">
           <span>🔒</span>
           <span>Admin Login</span>
         </button>
@@ -33,14 +37,38 @@
     <section class="hero">
       <div class="hero-pill">
         <span class="pulse-dot"></span>
-        <span>LIVE VERIFIED CPA OFFERS</span>
+        <span>VERIFIED CPA COMMUNTY CAMPAIGNS</span>
       </div>
+
       <h1 class="hero-title">
         Discover Verified <span>CPA Marketing Offers</span>
       </h1>
+
       <p class="hero-subtitle">
-        Browse top-performing affiliate rewards curated for your country. Click to begin any offer—once started, the offer automatically clears so you stay focused on fresh opportunities.
+        Browse top-performing affiliate rewards curated for your region. Click to begin any offer—once started, the offer automatically clears so you stay focused on fresh opportunities.
       </p>
+
+      <!-- Geolocation Auto-Detection Banner -->
+      <div id="geo-banner" class="geo-banner" style="display: none;">
+        <span>📍</span>
+        <span>Detecting your region for optimal offers...</span>
+      </div>
+
+      <!-- Live Community Stats Ticker -->
+      <div class="stats-ticker">
+        <div class="ticker-item">
+          <div class="ticker-num" id="stat-rewards">$249,500+</div>
+          <div class="ticker-label">Total Rewards Claimed</div>
+        </div>
+        <div class="ticker-item">
+          <div class="ticker-num" id="stat-active">10 / 10 Max</div>
+          <div class="ticker-label">Active CPA Campaigns</div>
+        </div>
+        <div class="ticker-item">
+          <div class="ticker-num" id="stat-members">3,840+</div>
+          <div class="ticker-label">Active Community Members</div>
+        </div>
+      </div>
     </section>
 
     <!-- Filter & Controls Bar -->
@@ -51,7 +79,6 @@
       </div>
 
       <div class="country-filters" id="country-filters">
-        <!-- Injected dynamically via js/app.js -->
         <button class="country-pill active" data-country="ALL">🌍 All Countries</button>
       </div>
 
@@ -62,7 +89,6 @@
 
     <!-- Dynamic Offers Grid -->
     <section class="offers-grid" id="offers-grid">
-      <!-- Injected dynamically via js/app.js -->
       <div class="empty-state">
         <div class="empty-icon">⏳</div>
         <h3>Loading active offers...</h3>
@@ -70,26 +96,26 @@
       </div>
     </section>
 
-    <!-- Community How-It-Works Guide -->
+    <!-- How-It-Works Guide -->
     <section style="background: var(--bg-card); border: 1px solid var(--bg-card-border); border-radius: var(--radius-lg); padding: 30px; margin-bottom: 50px;">
       <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
         <span>🎯</span> How Community CPA Offers Work
       </h3>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
         <div style="background: rgba(255,255,255,0.03); padding: 18px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
-          <div style="font-size: 1.5rem; margin-bottom: 8px;">1️⃣ Select Your Country</div>
+          <div style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; color: var(--primary);">1️⃣ Select Your Country</div>
           <p style="font-size: 0.88rem; color: var(--text-secondary);">
-            Use the country filter tags to pick your jurisdiction. Each CPA affiliate offer has verified geographical eligibility.
+            Use the country filter tags to pick your region. Each CPA affiliate offer has verified geographical eligibility.
           </p>
         </div>
         <div style="background: rgba(255,255,255,0.03); padding: 18px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
-          <div style="font-size: 1.5rem; margin-bottom: 8px;">2️⃣ Click "Start Offer"</div>
+          <div style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; color: var(--accent-cyan);">2️⃣ Click &amp; Start Offer</div>
           <p style="font-size: 0.88rem; color: var(--text-secondary);">
-            Open the official affiliate link in a secure tab and follow the quick instructions (e.g. download, sign up, survey).
+            Open the official affiliate link in a secure tab and complete simple requirements (e.g. app download, signup, survey).
           </p>
         </div>
         <div style="background: rgba(255,255,255,0.03); padding: 18px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
-          <div style="font-size: 1.5rem; margin-bottom: 8px;">3️⃣ Automatic Update & Erase</div>
+          <div style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; color: var(--secondary);">3️⃣ Auto-Erase on Start</div>
           <p style="font-size: 0.88rem; color: var(--text-secondary);">
             Once you click and start an offer, the platform automatically detects and erases it from your feed so you never repeat completed tasks.
           </p>
@@ -98,12 +124,43 @@
     </section>
   </main>
 
-  <!-- Site Footer -->
-  <footer class="site-footer">
-    <div class="container">
-      <p>&copy; 2026 SC-OFFERS Platform &bull; Real-time CPA Marketing &amp; Affiliate Tracker &bull; All Rights Reserved.</p>
+  <!-- Community Share & QR Modal -->
+  <div class="modal-overlay" id="share-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>📲</span>
+          <span>Share With Community</span>
+        </h3>
+        <button class="modal-close" id="close-share-modal-btn">&times;</button>
+      </div>
+
+      <div class="qr-card-wrap">
+        <div id="qr-canvas-container">
+          <!-- Injected via js/app.js -->
+        </div>
+
+        <div style="margin-top: 16px;">
+          <button id="copy-share-url-btn" class="btn btn-primary" style="width: 100%;">
+            <span>📋</span>
+            <span>Copy Portal Link</span>
+          </button>
+        </div>
+
+        <div class="share-links-row">
+          <a href="https://t.me/share/url?url=https%3A%2F%2F626gl1ch.github.io%2FSC-OFFERS%2F&text=Grab%20verified%20CPA%20rewards%20and%20bonuses%20now!" target="_blank" class="btn btn-secondary btn-sm" style="background:#229ED9; color:#fff; border:none;">
+            Telegram
+          </a>
+          <a href="https://api.whatsapp.com/send?text=Check%20out%20these%20exclusive%20CPA%20offers%3A%20https%3A%2F%2F626gl1ch.github.io%2FSC-OFFERS%2F" target="_blank" class="btn btn-secondary btn-sm" style="background:#25D366; color:#fff; border:none;">
+            WhatsApp
+          </a>
+          <a href="https://twitter.com/intent/tweet?text=Exclusive%20CPA%20rewards%20now%20live!&url=https%3A%2F%2F626gl1ch.github.io%2FSC-OFFERS%2F" target="_blank" class="btn btn-secondary btn-sm" style="background:#000; color:#fff; border:1px solid #333;">
+            X (Twitter)
+          </a>
+        </div>
+      </div>
     </div>
-  </footer>
+  </div>
 
   <!-- Admin Login Modal -->
   <div class="modal-overlay" id="admin-login-modal">
@@ -150,8 +207,18 @@
     </div>
   </div>
 
+  <!-- Confetti Canvas Layer -->
+  <canvas id="confetti-canvas"></canvas>
+
   <!-- Toast Notification Container -->
   <div id="toast-container"></div>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <p>&copy; 2026 SC-OFFERS Platform &bull; Real-time CPA Marketing &amp; Affiliate Tracker &bull; All Rights Reserved.</p>
+    </div>
+  </footer>
 
   <!-- Scripts -->
   <script src="js/crypto-util.js"></script>

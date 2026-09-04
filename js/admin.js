@@ -1,8 +1,14 @@
 /**
- * SC-OFFERS Admin Portal Engine
- * Full backend management: offer CRUD, up to 10 active offers capacity,
- * one-click GitHub Pages commit & sync, guest tracking analytics,
- * and security authentication with password "554#2Dani.G".
+ * SC-OFFERS Admin Portal Engine (Enterprise Pro Edition)
+ * Full backend management:
+ * - Up to 10 active CPA offer slots capacity monitor
+ * - Multi-device live guest simulator (Mobile, Tablet, Desktop)
+ * - JSON Export & Import backup suite
+ * - SubID affiliate link tracking generator
+ * - Priority pinning for featured campaigns
+ * - One-click GitHub REST API commit & sync
+ * - Visitor click & completion analytics
+ * - Secure authentication with password "554#2Dani.G"
  */
 
 class AdminPortalApp {
@@ -53,12 +59,21 @@ class AdminPortalApp {
         }
       }
     } catch (e) {
-      console.warn('Failed loading offers data, starting fresh', e);
       this.offers = [];
     }
 
+    this.sortOffers();
     this.renderOffersTable();
     this.updateCapacityMeter();
+  }
+
+  sortOffers() {
+    // Pinned offers first, then by date/order
+    this.offers.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return 0;
+    });
   }
 
   loadTrackingLogs() {
@@ -79,7 +94,7 @@ class AdminPortalApp {
     const text = document.getElementById('slot-capacity-text');
 
     if (badge) badge.textContent = `${activeCount} / ${this.maxSlots} Active`;
-    if (text) text.textContent = `Managing ${activeCount} active CPA offers (${totalCount} total in database, limit 10 active)`;
+    if (text) text.textContent = `Managing ${activeCount} active CPA offers (${totalCount} in database, limit: 10 active)`;
 
     if (fill) {
       const pct = Math.min(100, Math.round((activeCount / this.maxSlots) * 100));
@@ -112,7 +127,10 @@ class AdminPortalApp {
       return `
         <tr>
           <td>
-            <strong style="color: var(--primary);">#${index + 1}</strong>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <strong style="color: var(--primary);">#${index + 1}</strong>
+              ${offer.pinned ? '<span title="Pinned to top">📌</span>' : ''}
+            </div>
           </td>
           <td>
             <span class="country-badge">
@@ -150,6 +168,9 @@ class AdminPortalApp {
               <button class="btn btn-secondary btn-sm" onclick="window.adminApp.openEditModal('${offer.id}')" title="Edit offer">
                 ✏️
               </button>
+              <button class="btn btn-secondary btn-sm" onclick="window.adminApp.togglePin('${offer.id}')" title="${offer.pinned ? 'Unpin offer' : 'Pin to top'}">
+                ${offer.pinned ? '📍' : '📌'}
+              </button>
               <button class="btn btn-secondary btn-sm" onclick="window.adminApp.toggleStatus('${offer.id}')" title="${isActive ? 'Pause offer' : 'Activate offer'}">
                 ${isActive ? '⏸️' : '▶️'}
               </button>
@@ -171,7 +192,7 @@ class AdminPortalApp {
       tbody.innerHTML = `
         <tr>
           <td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">
-            No click or completion activity logged yet. When guests start offers, real-time records appear here.
+            No click or completion activity logged yet. When visitors start offers, real-time records appear here.
           </td>
         </tr>
       `;
@@ -209,7 +230,7 @@ class AdminPortalApp {
   openAddModal() {
     const activeCount = this.offers.filter(o => o.status === 'active').length;
     if (activeCount >= this.maxSlots) {
-      alert(`Capacity reached: You already have ${this.maxSlots} active offers. Please pause or delete an existing offer before adding a new active offer.`);
+      alert(`Limit reached: You have ${this.maxSlots} active offers. Please pause or delete an existing active offer first.`);
     }
 
     document.getElementById('offer-modal-title').innerHTML = `<span>➕</span><span>Add New CPA Offer</span>`;
@@ -223,6 +244,7 @@ class AdminPortalApp {
     document.getElementById('offer-category').value = 'Survey / Reward';
     document.getElementById('offer-payout').value = '$100 Reward';
     document.getElementById('offer-status').value = 'active';
+    document.getElementById('offer-pinned').checked = false;
 
     document.getElementById('offer-modal').classList.add('open');
   }
@@ -237,7 +259,6 @@ class AdminPortalApp {
     document.getElementById('offer-link').value = offer.link || '';
     document.getElementById('offer-desc').value = offer.description || '';
 
-    // Match country select
     const countrySelect = document.getElementById('offer-country');
     const customGroup = document.getElementById('custom-country-group');
     const customInput = document.getElementById('custom-country-input');
@@ -263,6 +284,7 @@ class AdminPortalApp {
     document.getElementById('offer-category').value = offer.category || '';
     document.getElementById('offer-payout').value = offer.payout || '';
     document.getElementById('offer-status').value = offer.status || 'active';
+    document.getElementById('offer-pinned').checked = !!offer.pinned;
 
     document.getElementById('offer-modal').classList.add('open');
   }
@@ -277,6 +299,7 @@ class AdminPortalApp {
     const category = document.getElementById('offer-category').value.trim();
     const payout = document.getElementById('offer-payout').value.trim();
     const status = document.getElementById('offer-status').value;
+    const pinned = document.getElementById('offer-pinned').checked;
 
     let country = 'Worldwide';
     let countryCode = 'WW';
@@ -294,7 +317,6 @@ class AdminPortalApp {
     }
 
     if (id) {
-      // Edit existing
       const index = this.offers.findIndex(o => o.id === id);
       if (index !== -1) {
         this.offers[index] = {
@@ -308,11 +330,11 @@ class AdminPortalApp {
           category,
           payout,
           status,
+          pinned,
           updatedAt: new Date().toISOString()
         };
       }
     } else {
-      // Create new
       const newOffer = {
         id: 'cpa-' + Date.now(),
         title,
@@ -324,19 +346,30 @@ class AdminPortalApp {
         category,
         payout,
         status,
+        pinned,
         clicks: 0,
         createdAt: new Date().toISOString()
       };
       this.offers.unshift(newOffer);
     }
 
-    // Save local cache immediately
+    this.sortOffers();
     this.saveLocalData();
     this.renderOffersTable();
     this.updateCapacityMeter();
 
     document.getElementById('offer-modal').classList.remove('open');
-    this.showToast('Offer saved successfully! Remember to click "Save & Push Live Changes" to sync.', 'success');
+    this.showToast('Offer saved! Remember to click "Save & Push Live Changes" to sync.', 'success');
+  }
+
+  togglePin(offerId) {
+    const offer = this.offers.find(o => o.id === offerId);
+    if (!offer) return;
+    offer.pinned = !offer.pinned;
+    this.sortOffers();
+    this.saveLocalData();
+    this.renderOffersTable();
+    this.showToast(offer.pinned ? 'Offer pinned to top.' : 'Offer unpinned.', 'info');
   }
 
   toggleStatus(offerId) {
@@ -374,16 +407,16 @@ class AdminPortalApp {
   }
 
   async restoreSampleOffers() {
-    if (!confirm('Reset all offers to default sample CPA campaigns? Any unsaved custom offers will be overwritten.')) return;
+    if (!confirm('Reset all offers to default sample campaigns? Unsaved changes will be replaced.')) return;
     try {
       const res = await fetch(`data/offers.json?_t=${Date.now()}`);
       if (res.ok) {
         this.offers = await res.json();
       }
     } catch (e) {
-      console.warn('Fallback sample offers reset');
       this.offers = [];
     }
+    this.sortOffers();
     this.saveLocalData();
     this.renderOffersTable();
     this.updateCapacityMeter();
@@ -394,7 +427,7 @@ class AdminPortalApp {
     try {
       const startedIds = JSON.parse(localStorage.getItem(SC_SECURITY.STARTED_OFFERS_KEY) || '[]');
       if (startedIds.length === 0) {
-        this.showToast('No offers have been erased or marked started by guests.', 'info');
+        this.showToast('No started or erased offers found.', 'info');
         return;
       }
 
@@ -419,13 +452,104 @@ class AdminPortalApp {
     this.showToast('Tracking logs cleared.', 'info');
   }
 
+  /* JSON Backup Export / Import */
+  exportJsonBackup() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.offers, null, 2));
+    const dlAnchor = document.createElement('a');
+    dlAnchor.setAttribute("href", dataStr);
+    dlAnchor.setAttribute("download", `sc-offers-backup-${new Date().toISOString().slice(0,10)}.json`);
+    document.body.appendChild(dlAnchor);
+    dlAnchor.click();
+    dlAnchor.remove();
+    this.showToast('Backup JSON exported successfully!', 'success');
+  }
+
+  importJsonBackup(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const imported = JSON.parse(e.target.result);
+        if (Array.isArray(imported)) {
+          this.offers = imported;
+          this.sortOffers();
+          this.saveLocalData();
+          this.renderOffersTable();
+          this.updateCapacityMeter();
+          this.showToast(`Successfully imported ${imported.length} offers!`, 'success');
+        } else {
+          alert('Invalid backup file format. Expected a JSON array of offers.');
+        }
+      } catch (err) {
+        alert('Failed reading JSON file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /* SubID Tracking Link Builder */
+  openSubIdModal() {
+    const select = document.getElementById('subid-offer-select');
+    if (!select) return;
+
+    select.innerHTML = this.offers.map(o => `
+      <option value="${this.escapeHtml(o.link)}">${this.escapeHtml(o.title)} (${this.escapeHtml(o.country)})</option>
+    `).join('');
+
+    this.updateSubIdUrl();
+    document.getElementById('subid-modal').classList.add('open');
+  }
+
+  updateSubIdUrl() {
+    const select = document.getElementById('subid-offer-select');
+    const sub1 = (document.getElementById('subid-1').value || '').trim();
+    const sub2 = (document.getElementById('subid-2').value || '').trim();
+    const out = document.getElementById('subid-generated-url');
+
+    if (!select || !out) return;
+    const base = select.value || '';
+    if (!base) {
+      out.value = '';
+      return;
+    }
+
+    try {
+      const url = new URL(base);
+      if (sub1) url.searchParams.set('sub1', sub1);
+      if (sub2) url.searchParams.set('sub2', sub2);
+      out.value = url.toString();
+    } catch (e) {
+      const separator = base.includes('?') ? '&' : '?';
+      out.value = `${base}${separator}sub1=${encodeURIComponent(sub1)}&sub2=${encodeURIComponent(sub2)}`;
+    }
+  }
+
+  /* Multi-Device Preview */
+  openDevicePreview() {
+    const modal = document.getElementById('device-preview-modal');
+    const frame = document.getElementById('device-frame');
+    if (!modal || !frame) return;
+
+    const iframe = frame.querySelector('iframe');
+    if (iframe) {
+      iframe.src = `index.html?_preview=${Date.now()}`;
+    }
+
+    modal.classList.add('open');
+  }
+
+  setDeviceMode(mode) {
+    const frame = document.getElementById('device-frame');
+    if (!frame) return;
+
+    frame.className = `device-viewport-frame ${mode}`;
+    document.querySelectorAll('.device-btn').forEach(btn => btn.classList.remove('active'));
+
+    const activeBtn = document.getElementById(`btn-device-${mode}`);
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+
   /**
    * One-Click "Save & Push Live Changes"
-   * Runs automated updates:
-   * 1. Validates up to 10 active offers limit.
-   * 2. Saves payload to localStorage and prepares data/offers.json.
-   * 3. Syncs via GitHub API if PAT is configured.
-   * 4. Syncs via local backend API if server.py is running.
    */
   async saveAndPushChanges() {
     const consoleWrap = document.getElementById('push-console-wrapper');
@@ -450,7 +574,6 @@ class AdminPortalApp {
     try {
       log('Starting automated update & deployment sequence...');
       
-      // Step 1: Validate offers
       const activeOffers = this.offers.filter(o => o.status === 'active');
       log(`[1/4] Validating offers: ${activeOffers.length} active (limit: ${this.maxSlots}), ${this.offers.length} total.`);
 
@@ -458,13 +581,10 @@ class AdminPortalApp {
         throw new Error(`Active offers exceed ${this.maxSlots}. Please pause or delete ${activeOffers.length - this.maxSlots} offer(s).`);
       }
 
-      // Step 2: Save to browser data
-      log('[2/4] Writing updated data to local database & cache...');
+      log('[2/4] Saving updated database to local browser cache...');
       this.saveLocalData();
 
-      // Step 3: Check local backend server
-      log('[3/4] Checking local sync backend...');
-      let localBackendSynced = false;
+      log('[3/4] Checking local sync backend server...');
       try {
         const localRes = await fetch('/api/save-offers', {
           method: 'POST',
@@ -477,26 +597,22 @@ class AdminPortalApp {
         if (localRes.ok) {
           const resData = await localRes.json();
           log(`Local backend file saved: ${resData.status || 'OK'}`);
-          localBackendSynced = true;
         }
       } catch (e) {
         log('Local backend server offline (running in static / client-side mode).');
       }
 
-      // Step 4: Commit to GitHub via REST API if PAT configured
       log('[4/4] Synchronizing with GitHub Pages repository...');
       const cfg = SC_SECURITY.getRepoConfig();
-      let githubSynced = false;
 
       if (cfg.pat) {
         try {
-          githubSynced = await this.commitToGitHub(cfg, this.offers, log);
+          await this.commitToGitHub(cfg, this.offers, log);
         } catch (ghErr) {
-          log(`GitHub commit warning: ${ghErr.message}`);
+          log(`GitHub commit note: ${ghErr.message}`);
         }
       } else {
-        log('Note: GitHub PAT not configured in Settings. Changes saved locally in browser.');
-        log('To push directly to GitHub Pages online, add your PAT in ⚙️ Settings.');
+        log('GitHub PAT not configured in Settings. Saved locally.');
       }
 
       if (spinner) spinner.textContent = 'Completed!';
@@ -516,12 +632,10 @@ class AdminPortalApp {
   async commitToGitHub(cfg, offersData, log) {
     const jsonString = JSON.stringify(offersData, null, 2);
     const contentBase64 = btoa(unescape(encodeURIComponent(jsonString)));
-
     const url = `https://api.github.com/repos/${cfg.repoOwner}/${cfg.repoName}/contents/${cfg.filePath}`;
     
     log(`Connecting to GitHub API (${cfg.repoOwner}/${cfg.repoName})...`);
 
-    // Fetch existing file SHA if present
     let sha = null;
     try {
       const getRes = await fetch(`${url}?ref=${cfg.branch}`, {
@@ -533,13 +647,12 @@ class AdminPortalApp {
       if (getRes.ok) {
         const fileData = await getRes.json();
         sha = fileData.sha;
-        log(`Existing data file found (SHA: ${sha.substring(0, 7)}).`);
+        log(`Existing data file located (SHA: ${sha.substring(0, 7)}).`);
       }
     } catch (e) {
-      log('Creating new file on GitHub...');
+      log('Creating initial data file...');
     }
 
-    // Commit payload
     const body = {
       message: `Update CPA offers via Admin Panel [${new Date().toISOString()}]`,
       content: contentBase64,
@@ -547,7 +660,7 @@ class AdminPortalApp {
     };
     if (sha) body.sha = sha;
 
-    log('Transmitting commit payload to GitHub...');
+    log('Transmitting commit to GitHub...');
     const putRes = await fetch(url, {
       method: 'PUT',
       headers: {
@@ -619,32 +732,28 @@ class AdminPortalApp {
       });
     }
 
-    // Offer form submit
     const offerForm = document.getElementById('offer-form');
     if (offerForm) {
       offerForm.addEventListener('submit', (e) => this.saveOfferFromModal(e));
     }
 
-    // Save & Push button
     const pushBtn = document.getElementById('save-push-btn');
     if (pushBtn) {
       pushBtn.addEventListener('click', () => this.saveAndPushChanges());
     }
 
-    // Copy community guest link
     const copyBtn = document.getElementById('copy-community-link-btn');
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
         const guestUrl = new URL('index.html', window.location.href).href;
         navigator.clipboard.writeText(guestUrl).then(() => {
-          this.showToast('Guest community link copied to clipboard! Share it with your members.', 'success');
+          this.showToast('Guest community link copied to clipboard!', 'success');
         }).catch(() => {
           prompt('Copy this link to share with your community:', guestUrl);
         });
       });
     }
 
-    // Purge & Restore buttons
     const purgeBtn = document.getElementById('purge-started-btn');
     if (purgeBtn) purgeBtn.addEventListener('click', () => this.purgeStartedOffers());
 
@@ -653,6 +762,59 @@ class AdminPortalApp {
 
     const clearTrackBtn = document.getElementById('clear-tracking-btn');
     if (clearTrackBtn) clearTrackBtn.addEventListener('click', () => this.clearTrackingLogs());
+
+    // Export & Import Backup
+    const exportBtn = document.getElementById('export-backup-btn');
+    if (exportBtn) exportBtn.addEventListener('click', () => this.exportJsonBackup());
+
+    const triggerImportBtn = document.getElementById('trigger-import-btn');
+    const importFileInput = document.getElementById('import-file-input');
+    if (triggerImportBtn && importFileInput) {
+      triggerImportBtn.addEventListener('click', () => importFileInput.click());
+      importFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          this.importJsonBackup(e.target.files[0]);
+        }
+      });
+    }
+
+    // SubID Link Builder
+    const openSubIdBtn = document.getElementById('open-subid-btn');
+    const closeSubIdBtn = document.getElementById('close-subid-modal-btn');
+    const subidSelect = document.getElementById('subid-offer-select');
+    const subid1 = document.getElementById('subid-1');
+    const subid2 = document.getElementById('subid-2');
+    const copySubIdBtn = document.getElementById('copy-subid-url-btn');
+
+    if (openSubIdBtn) openSubIdBtn.addEventListener('click', () => this.openSubIdModal());
+    if (closeSubIdBtn) closeSubIdBtn.addEventListener('click', () => document.getElementById('subid-modal').classList.remove('open'));
+    if (subidSelect) subidSelect.addEventListener('change', () => this.updateSubIdUrl());
+    if (subid1) subid1.addEventListener('input', () => this.updateSubIdUrl());
+    if (subid2) subid2.addEventListener('input', () => this.updateSubIdUrl());
+    if (copySubIdBtn) {
+      copySubIdBtn.addEventListener('click', () => {
+        const val = document.getElementById('subid-generated-url').value;
+        if (val) {
+          navigator.clipboard.writeText(val).then(() => {
+            this.showToast('Tracked SubID URL copied to clipboard!', 'success');
+          });
+        }
+      });
+    }
+
+    // Device Preview Simulator
+    const openDeviceBtn = document.getElementById('open-device-preview-btn');
+    const closeDeviceBtn = document.getElementById('close-device-modal-btn');
+    if (openDeviceBtn) openDeviceBtn.addEventListener('click', () => this.openDevicePreview());
+    if (closeDeviceBtn) closeDeviceBtn.addEventListener('click', () => document.getElementById('device-preview-modal').classList.remove('open'));
+
+    const btnMobile = document.getElementById('btn-device-mobile');
+    const btnTablet = document.getElementById('btn-device-tablet');
+    const btnDesktop = document.getElementById('btn-device-desktop');
+
+    if (btnMobile) btnMobile.addEventListener('click', () => this.setDeviceMode('mobile'));
+    if (btnTablet) btnTablet.addEventListener('click', () => this.setDeviceMode('tablet'));
+    if (btnDesktop) btnDesktop.addEventListener('click', () => this.setDeviceMode('desktop'));
 
     // Settings Modal
     const openSettingsBtn = document.getElementById('open-settings-btn');
@@ -689,11 +851,10 @@ class AdminPortalApp {
         };
         SC_SECURITY.saveRepoConfig(config);
         settingsModal.classList.remove('open');
-        this.showToast('GitHub configuration saved.', 'success');
+        this.showToast('Settings saved.', 'success');
       });
     }
 
-    // Test GitHub Connection button
     const testGhBtn = document.getElementById('test-gh-btn');
     if (testGhBtn) {
       testGhBtn.addEventListener('click', async () => {
@@ -719,7 +880,7 @@ class AdminPortalApp {
 
           if (res.ok) {
             const data = await res.json();
-            alert(`✅ Connection verified! Repository "${data.full_name}" is accessible. Permissions: push=${data.permissions ? data.permissions.push : 'N/A'}`);
+            alert(`✅ Connection verified! Repository "${data.full_name}" is accessible.`);
           } else {
             const err = await res.json();
             alert(`❌ Connection failed: ${err.message}`);
@@ -768,7 +929,6 @@ class AdminPortalApp {
   }
 }
 
-// Global initialization
 document.addEventListener('DOMContentLoaded', () => {
   window.adminApp = new AdminPortalApp();
 });
