@@ -63,9 +63,9 @@ const SC_SECURITY = {
     sessionStorage.setItem(this.SESSION_KEY, token);
     localStorage.setItem(this.SESSION_KEY, token);
 
-    // If PAT is not yet configured in localStorage, auto-decrypt and set it
+    // If PAT is missing or corrupted in localStorage, auto-decrypt and set it
     const cfg = this.getRepoConfig();
-    if (!cfg.pat) {
+    if (!cfg.pat || !cfg.pat.startsWith('ghp_')) {
       const decryptedPat = this.decryptBuiltInPat(password);
       if (decryptedPat && decryptedPat.startsWith('ghp_')) {
         cfg.pat = decryptedPat;

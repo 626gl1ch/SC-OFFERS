@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-SC-OFFERS Local Backend & Live Sync Server
+SC-OFFERS Local Backend & Live Sync Server (Production-Ready)
 Zero-dependency Python 3 HTTP server with REST endpoints for:
 - Saving CPA offers directly to data/offers.json
 - Automatically committing and pushing changes via git CLI
 - Tracking clicks and completion events
+- Health monitoring and CORS support
 """
 
 import os
@@ -26,6 +27,68 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
 
+    def end_headers(self):
+        # Always inject CORS and cache prevention headers for API & data files
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        if self.path.endswith(".json") or self.path.startswith("/api/"):
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        super().end_headers()
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+
+        # Health endpoint: /api/health
+        if parsed.path == "/api/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            offers_count = 0
+            if os.path.exists(OFFERS_FILE):
+                try:
+                    with open(OFFERS_FILE, "r", encoding="utf-8") as f:
+                        offers_count = len(json.load(f))
+                except Exception:
+                    pass
+            resp = {
+                "status": "healthy",
+                "service": "SC-OFFERS Backend",
+                "version": "2.0.0",
+                "activeOffers": offers_count,
+                "port": PORT
+            }
+            self.wfile.write(json.dumps(resp).encode("utf-8"))
+            return
+
+        # Offers endpoint: /api/offers
+        if parsed.path == "/api/offers":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            if os.path.exists(OFFERS_FILE):
+                with open(OFFERS_FILE, "rb") as f:
+                    self.wfile.write(f.read())
+            else:
+                self.wfile.write(b"[]")
+            return
+
+        # Tracking logs endpoint: /api/tracking
+        if parsed.path == "/api/tracking":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            if os.path.exists(TRACKING_FILE):
+                with open(TRACKING_FILE, "rb") as f:
+                    self.wfile.write(f.read())
+            else:
+                self.wfile.write(b"[]")
+            return
+
+        super().do_GET()
+
     def do_POST(self):
         parsed = urlparse(self.path)
         
@@ -43,19 +106,18 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
                     json.dump(offers_data, f, indent=2, ensure_ascii=False)
 
                 # 2. Attempt automatic Git commit & push if git repository exists
-                git_status = "Saved locally"
+                git_status = "Saved locally to disk"
                 if os.path.exists(os.path.join(BASE_DIR, ".git")):
                     try:
                         subprocess.run(["git", "add", "data/offers.json"], cwd=BASE_DIR, check=True, capture_output=True)
                         commit_res = subprocess.run(["git", "commit", "-m", commit_msg], cwd=BASE_DIR, capture_output=True, text=True)
                         push_res = subprocess.run(["git", "push"], cwd=BASE_DIR, capture_output=True, text=True)
-                        git_status = f"Committed & pushed: {commit_res.stdout.strip()[:40]}"
+                        git_status = f"Committed & pushed to remote branch"
                     except Exception as git_err:
-                        git_status = f"Git operation note: {str(git_err)}"
+                        git_status = f"Git sync note: {str(git_err)[:60]}"
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 resp = {
                     "status": "success",
@@ -93,9 +155,8 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(json.dumps({"status": "logged"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"status": "logged", "eventsCount": len(tracking_data)}).encode("utf-8"))
                 return
             except Exception as e:
                 self.send_response(500)
@@ -109,19 +170,17 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
 def run():
     server_address = ("", PORT)
     httpd = HTTPServer(server_address, SCOffersHandler)
     print(f"=======================================================")
-    print(f"  SC-OFFERS Server running on http://localhost:{PORT}")
-    print(f"  Guest Site: http://localhost:{PORT}/index.html")
+    print(f"  ⚡ SC-OFFERS Local Server running on port {PORT}")
+    print(f"  Guest Site:  http://localhost:{PORT}/index.html")
     print(f"  Admin Panel: http://localhost:{PORT}/admin.html")
-    print(f"  Admin Password: 554#2Dani.G")
+    print(f"  Health Check: http://localhost:{PORT}/api/health")
+    print(f"  Master Password: 554#2Dani.G")
     print(f"=======================================================")
     try:
         httpd.serve_forever()

@@ -298,12 +298,15 @@ class AdminPortalApp {
     const status = document.getElementById('offer-status').value;
     const pinned = document.getElementById('offer-pinned').checked;
 
-    // Check active limit
-    if (!id && status === 'active') {
-      const activeCount = this.offers.filter(o => o.status === 'active').length;
-      if (activeCount >= this.maxSlots) {
-        alert(`Limit reached: You have ${this.maxSlots} active offers. Please pause or delete an existing offer before adding a new active offer.`);
-        return;
+    // Check active limit (new offer or activating an existing paused offer)
+    if (status === 'active') {
+      const isExistingActive = id ? this.offers.some(o => o.id === id && o.status === 'active') : false;
+      if (!isExistingActive) {
+        const activeCount = this.offers.filter(o => o.status === 'active').length;
+        if (activeCount >= this.maxSlots) {
+          alert(`Limit reached: You already have ${this.maxSlots} active offers. Please pause or delete an existing offer before activating this offer.`);
+          return;
+        }
       }
     }
 
@@ -315,6 +318,11 @@ class AdminPortalApp {
       const customRaw = document.getElementById('custom-country-input').value.trim();
       country = customRaw || 'Custom';
       flag = '📍';
+      const emojiMatch = country.match(/^(\p{Extended_Pictographic}+)\s*(.*)$/u);
+      if (emojiMatch) {
+        flag = emojiMatch[1];
+        country = emojiMatch[2] || country;
+      }
     } else {
       const parts = countryVal.split('|');
       country = parts[0];
@@ -659,8 +667,16 @@ class AdminPortalApp {
         const fileData = await getRes.json();
         sha = fileData.sha;
         log(`Existing data file located (SHA: ${sha.substring(0, 7)}).`);
+      } else if (getRes.status !== 404) {
+        if (getRes.status === 401) {
+          throw new Error('Invalid or expired GitHub PAT. Please update token in Settings.');
+        }
+        if (getRes.status === 403) {
+          throw new Error('GitHub API access forbidden (check repository permissions or rate limits).');
+        }
       }
     } catch (e) {
+      if (e.message && e.message.includes('GitHub')) throw e;
       log('Creating initial data file...');
     }
 
@@ -895,6 +911,29 @@ class AdminPortalApp {
         }
       });
     }
+
+    // Modal overlay backdrop click closes modal
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.classList.remove('open');
+      });
+    });
+
+    // Escape key closes any open modal
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      }
+    });
+
+    // Cross-tab synchronization
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'sc_offers_custom_data') {
+        this.loadData();
+      } else if (e.key === SC_SECURITY.TRACKING_KEY) {
+        this.loadTrackingLogs();
+      }
+    });
   }
 
   copyToClipboard(text, successMsg) {

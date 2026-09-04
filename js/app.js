@@ -141,11 +141,11 @@ class GuestOffersApp {
       this.offers = Array.isArray(data) ? data : [];
 
       if (this.detectedCountry) {
-        const hasMatch = this.offers.some(
+        const matchedOffer = this.offers.find(
           o => o.status === 'active' && (o.country === this.detectedCountry || o.countryCode === this.detectedCountryCode)
         );
-        if (hasMatch) {
-          this.selectedCountry = this.detectedCountry;
+        if (matchedOffer && matchedOffer.country) {
+          this.selectedCountry = matchedOffer.country;
         }
       }
 
@@ -331,21 +331,22 @@ class GuestOffersApp {
     // 3. Log tracking record & increment click counter
     this.logClickEvent(offer);
 
-    // 4. Animate and auto-erase from UI
+    // 4. Record started offer and auto-erase from UI
+    this.startedOfferIds.add(offerId);
+    this.saveStartedOffers();
+
+    this.showToast(
+      `🎉 Offer started! "${offer.title}" has been claimed and erased from your active feed.`,
+      'success'
+    );
+
     if (card) {
       card.classList.add('erasing');
-
-      this.showToast(
-        `🎉 Offer started! "${offer.title}" has been claimed and erased from your active feed.`,
-        'success'
-      );
-
-      this.startedOfferIds.add(offerId);
-      this.saveStartedOffers();
-
       setTimeout(() => {
         this.renderOffers();
       }, 750);
+    } else {
+      this.renderOffers();
     }
   }
 
@@ -353,16 +354,23 @@ class GuestOffersApp {
     try {
       // Increment clicks count in local cache
       const localCustom = localStorage.getItem('sc_offers_custom_data');
+      let allOffers = [];
       if (localCustom) {
         try {
-          const allOffers = JSON.parse(localCustom);
-          const target = allOffers.find(o => o.id === offer.id);
-          if (target) {
-            target.clicks = (target.clicks || 0) + 1;
-            localStorage.setItem('sc_offers_custom_data', JSON.stringify(allOffers));
-          }
-        } catch (e) {}
+          allOffers = JSON.parse(localCustom);
+        } catch (e) {
+          allOffers = [];
+        }
       }
+      if (!allOffers || allOffers.length === 0) {
+        allOffers = [...this.offers];
+      }
+      const target = allOffers.find(o => o.id === offer.id);
+      if (target) {
+        target.clicks = (target.clicks || 0) + 1;
+      }
+      offer.clicks = (offer.clicks || 0) + 1;
+      localStorage.setItem('sc_offers_custom_data', JSON.stringify(allOffers));
 
       const logs = JSON.parse(localStorage.getItem(SC_SECURITY.TRACKING_KEY) || '[]');
       const newEvent = {
@@ -580,12 +588,35 @@ class GuestOffersApp {
       closeShareModalBtn.addEventListener('click', () => shareModal.classList.remove('open'));
     }
 
+    if (shareModal) {
+      shareModal.addEventListener('click', (e) => {
+        if (e.target === shareModal) shareModal.classList.remove('open');
+      });
+    }
+
     if (copyShareUrlBtn) {
       copyShareUrlBtn.addEventListener('click', () => {
         const url = window.location.href;
         this.copyToClipboard(url, 'Portal link copied to clipboard!');
       });
     }
+
+    // Cross-tab synchronization
+    window.addEventListener('storage', (e) => {
+      if (e.key === SC_SECURITY.STARTED_OFFERS_KEY) {
+        this.loadStartedOffers();
+        this.renderOffers();
+      } else if (e.key === 'sc_offers_custom_data') {
+        this.loadOffers();
+      }
+    });
+
+    // Close any open modal on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      }
+    });
   }
 
   updateShareLinks() {
