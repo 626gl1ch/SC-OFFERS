@@ -68,7 +68,6 @@ class AdminPortalApp {
   }
 
   sortOffers() {
-    // Pinned offers first, then by date/order
     this.offers.sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
@@ -156,6 +155,9 @@ class AdminPortalApp {
             <span class="payout-tag" style="font-size: 0.78rem; padding: 2px 8px;">
               ${this.escapeHtml(offer.payout || 'Active')}
             </span>
+            <div style="font-size: 0.75rem; color: var(--accent-amber); font-weight: 600; margin-top: 4px;">
+              🔥 ${offer.clicks || 0} clicks
+            </div>
           </td>
           <td>
             <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 600; color: ${isActive ? 'var(--primary)' : 'var(--text-muted)'};">
@@ -228,11 +230,6 @@ class AdminPortalApp {
   }
 
   openAddModal() {
-    const activeCount = this.offers.filter(o => o.status === 'active').length;
-    if (activeCount >= this.maxSlots) {
-      alert(`Limit reached: You have ${this.maxSlots} active offers. Please pause or delete an existing active offer first.`);
-    }
-
     document.getElementById('offer-modal-title').innerHTML = `<span>➕</span><span>Add New CPA Offer</span>`;
     document.getElementById('offer-id').value = '';
     document.getElementById('offer-title').value = '';
@@ -300,6 +297,15 @@ class AdminPortalApp {
     const payout = document.getElementById('offer-payout').value.trim();
     const status = document.getElementById('offer-status').value;
     const pinned = document.getElementById('offer-pinned').checked;
+
+    // Check active limit
+    if (!id && status === 'active') {
+      const activeCount = this.offers.filter(o => o.status === 'active').length;
+      if (activeCount >= this.maxSlots) {
+        alert(`Limit reached: You have ${this.maxSlots} active offers. Please pause or delete an existing offer before adding a new active offer.`);
+        return;
+      }
+    }
 
     let country = 'Worldwide';
     let countryCode = 'WW';
@@ -584,22 +590,27 @@ class AdminPortalApp {
       log('[2/4] Saving updated database to local browser cache...');
       this.saveLocalData();
 
-      log('[3/4] Checking local sync backend server...');
-      try {
-        const localRes = await fetch('/api/save-offers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            offers: this.offers,
-            message: `Update CPA offers: ${activeOffers.length} active campaigns`
-          })
-        });
-        if (localRes.ok) {
-          const resData = await localRes.json();
-          log(`Local backend file saved: ${resData.status || 'OK'}`);
+      // Only hit local backend if running locally
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        log('[3/4] Synchronizing with local server...');
+        try {
+          const localRes = await fetch('/api/save-offers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              offers: this.offers,
+              message: `Update CPA offers: ${activeOffers.length} active campaigns`
+            })
+          });
+          if (localRes.ok) {
+            const resData = await localRes.json();
+            log(`Local backend file saved: ${resData.status || 'OK'}`);
+          }
+        } catch (e) {
+          log('Local backend server offline.');
         }
-      } catch (e) {
-        log('Local backend server offline (running in static / client-side mode).');
+      } else {
+        log('[3/4] Static mode active (running directly on GitHub Pages).');
       }
 
       log('[4/4] Synchronizing with GitHub Pages repository...');
@@ -682,7 +693,6 @@ class AdminPortalApp {
   }
 
   bindEvents() {
-    // Gate login form
     const gateForm = document.getElementById('gate-login-form');
     if (gateForm) {
       gateForm.addEventListener('submit', async (e) => {
@@ -703,7 +713,6 @@ class AdminPortalApp {
       });
     }
 
-    // Logout
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
@@ -713,7 +722,6 @@ class AdminPortalApp {
       });
     }
 
-    // Modal controls
     const addBtn = document.getElementById('open-add-modal-btn');
     if (addBtn) addBtn.addEventListener('click', () => this.openAddModal());
 
@@ -746,11 +754,7 @@ class AdminPortalApp {
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
         const guestUrl = new URL('index.html', window.location.href).href;
-        navigator.clipboard.writeText(guestUrl).then(() => {
-          this.showToast('Guest community link copied to clipboard!', 'success');
-        }).catch(() => {
-          prompt('Copy this link to share with your community:', guestUrl);
-        });
+        this.copyToClipboard(guestUrl, 'Guest community link copied to clipboard! Share it with your members.');
       });
     }
 
@@ -795,9 +799,7 @@ class AdminPortalApp {
       copySubIdBtn.addEventListener('click', () => {
         const val = document.getElementById('subid-generated-url').value;
         if (val) {
-          navigator.clipboard.writeText(val).then(() => {
-            this.showToast('Tracked SubID URL copied to clipboard!', 'success');
-          });
+          this.copyToClipboard(val, 'Tracked SubID URL copied to clipboard!');
         }
       });
     }
@@ -893,6 +895,32 @@ class AdminPortalApp {
         }
       });
     }
+  }
+
+  copyToClipboard(text, successMsg) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.showToast(successMsg, 'success');
+      }).catch(() => this.fallbackCopy(text, successMsg));
+    } else {
+      this.fallbackCopy(text, successMsg);
+    }
+  }
+
+  fallbackCopy(text, successMsg) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      this.showToast(successMsg, 'success');
+    } catch (e) {
+      prompt('Copy link:', text);
+    }
+    ta.remove();
   }
 
   showToast(message, type = 'info') {

@@ -52,7 +52,7 @@ const SC_SECURITY = {
   },
 
   /**
-   * Saves authenticated admin session
+   * Saves authenticated admin session (persists across tabs for 7 days)
    */
   createSession(password) {
     const token = btoa(JSON.stringify({
@@ -61,6 +61,7 @@ const SC_SECURITY = {
       nonce: Math.random().toString(36).substring(2)
     }));
     sessionStorage.setItem(this.SESSION_KEY, token);
+    localStorage.setItem(this.SESSION_KEY, token);
 
     // If PAT is not yet configured in localStorage, auto-decrypt and set it
     const cfg = this.getRepoConfig();
@@ -75,24 +76,35 @@ const SC_SECURITY = {
   },
 
   /**
-   * Checks if admin is logged in
+   * Checks if admin is logged in (validates 7-day expiry)
    */
   isAuthenticated() {
     try {
-      const session = sessionStorage.getItem(this.SESSION_KEY);
+      let session = sessionStorage.getItem(this.SESSION_KEY);
+      if (!session) {
+        session = localStorage.getItem(this.SESSION_KEY);
+      }
       if (!session) return false;
       const data = JSON.parse(atob(session));
-      return data && data.auth === true;
+      if (!data || data.auth !== true) return false;
+
+      // 7-day expiration check
+      if (Date.now() - (data.timestamp || 0) > 7 * 24 * 60 * 60 * 1000) {
+        this.logout();
+        return false;
+      }
+      return true;
     } catch (e) {
       return false;
     }
   },
 
   /**
-   * Clear admin session
+   * Clear admin session from both stores
    */
   logout() {
     sessionStorage.removeItem(this.SESSION_KEY);
+    localStorage.removeItem(this.SESSION_KEY);
   },
 
   /**

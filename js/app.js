@@ -1,12 +1,12 @@
 /**
  * SC-OFFERS Guest Portal Engine (Enterprise Edition)
- * Features:
+ * Complete client-side application:
  * - Dynamic offer loading & cache-busting sync
  * - Automatic IP Geolocation & regional smart-pinning
  * - Urgency countdown timers & claimed spots indicators
  * - Celebratory canvas confetti on offer start
  * - Instant automatic offer erasing upon click & completion
- * - Community viral sharing & QR code modal
+ * - Community viral sharing & dynamic QR code modal
  */
 
 class GuestOffersApp {
@@ -18,6 +18,7 @@ class GuestOffersApp {
     this.detectedCountry = null;
     this.detectedCountryCode = null;
     this.urgencyInterval = null;
+    this.confettiRunning = false;
     
     this.init();
   }
@@ -70,7 +71,6 @@ class GuestOffersApp {
         return;
       }
 
-      // Fast non-blocking timeout fetch (1.5s max)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1500);
 
@@ -94,7 +94,6 @@ class GuestOffersApp {
         }
       }
     } catch (err) {
-      // Fallback silently without breaking UI
       if (geoBanner) geoBanner.style.display = 'none';
     }
   }
@@ -141,7 +140,6 @@ class GuestOffersApp {
 
       this.offers = Array.isArray(data) ? data : [];
 
-      // If user country is detected, check if we have matching offers
       if (this.detectedCountry) {
         const hasMatch = this.offers.some(
           o => o.status === 'active' && (o.country === this.detectedCountry || o.countryCode === this.detectedCountryCode)
@@ -261,7 +259,6 @@ class GuestOffersApp {
     }
 
     grid.innerHTML = filtered.map((offer, idx) => {
-      // Deterministic urgency minutes based on index
       const remainingMinutes = (12 + (idx * 7)) % 45 + 5;
       const claimedSpots = 3 + (idx % 3);
       const totalSpots = 5;
@@ -331,7 +328,7 @@ class GuestOffersApp {
     // 2. Trigger celebration confetti
     this.launchConfetti();
 
-    // 3. Log tracking record
+    // 3. Log tracking record & increment click counter
     this.logClickEvent(offer);
 
     // 4. Animate and auto-erase from UI
@@ -354,6 +351,19 @@ class GuestOffersApp {
 
   logClickEvent(offer) {
     try {
+      // Increment clicks count in local cache
+      const localCustom = localStorage.getItem('sc_offers_custom_data');
+      if (localCustom) {
+        try {
+          const allOffers = JSON.parse(localCustom);
+          const target = allOffers.find(o => o.id === offer.id);
+          if (target) {
+            target.clicks = (target.clicks || 0) + 1;
+            localStorage.setItem('sc_offers_custom_data', JSON.stringify(allOffers));
+          }
+        } catch (e) {}
+      }
+
       const logs = JSON.parse(localStorage.getItem(SC_SECURITY.TRACKING_KEY) || '[]');
       const newEvent = {
         id: 'click-' + Date.now(),
@@ -368,11 +378,14 @@ class GuestOffersApp {
       if (logs.length > 100) logs.length = 100;
       localStorage.setItem(SC_SECURITY.TRACKING_KEY, JSON.stringify(logs));
 
-      fetch('/api/track-click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEvent)
-      }).catch(() => {});
+      // Only attempt local backend API when running locally
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        fetch('/api/track-click', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newEvent)
+        }).catch(() => {});
+      }
     } catch (e) {}
   }
 
@@ -558,6 +571,7 @@ class GuestOffersApp {
     if (shareBtn && shareModal) {
       shareBtn.addEventListener('click', () => {
         this.renderQrCode();
+        this.updateShareLinks();
         shareModal.classList.add('open');
       });
     }
@@ -569,11 +583,23 @@ class GuestOffersApp {
     if (copyShareUrlBtn) {
       copyShareUrlBtn.addEventListener('click', () => {
         const url = window.location.href;
-        navigator.clipboard.writeText(url).then(() => {
-          this.showToast('Portal link copied to clipboard!', 'success');
-        });
+        this.copyToClipboard(url, 'Portal link copied to clipboard!');
       });
     }
+  }
+
+  updateShareLinks() {
+    const currentUrl = encodeURIComponent(window.location.href);
+    const text = encodeURIComponent('Exclusive verified CPA rewards and bonuses now live! Claim yours here:');
+
+    const tgBtn = document.getElementById('share-telegram-btn');
+    if (tgBtn) tgBtn.href = `https://t.me/share/url?url=${currentUrl}&text=${text}`;
+
+    const waBtn = document.getElementById('share-whatsapp-btn');
+    if (waBtn) waBtn.href = `https://api.whatsapp.com/send?text=${text}%20${currentUrl}`;
+
+    const twBtn = document.getElementById('share-twitter-btn');
+    if (twBtn) twBtn.href = `https://twitter.com/intent/tweet?text=${text}&url=${currentUrl}`;
   }
 
   renderQrCode() {
@@ -581,13 +607,38 @@ class GuestOffersApp {
     if (!container) return;
 
     const url = window.location.href;
-    // Generate clean SVG QR representation
     container.innerHTML = `
       <div style="background:#fff; padding:16px; border-radius:12px; display:inline-block; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
         <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}" alt="QR Code" width="180" height="180" style="display:block;">
       </div>
       <p style="font-size:0.8rem; color:#94a3b8; margin-top:10px;">Scan with any smartphone camera to open offers</p>
     `;
+  }
+
+  copyToClipboard(text, successMsg) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.showToast(successMsg, 'success');
+      }).catch(() => this.fallbackCopy(text, successMsg));
+    } else {
+      this.fallbackCopy(text, successMsg);
+    }
+  }
+
+  fallbackCopy(text, successMsg) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      this.showToast(successMsg, 'success');
+    } catch (e) {
+      prompt('Copy link:', text);
+    }
+    ta.remove();
   }
 
   showToast(message, type = 'info') {
