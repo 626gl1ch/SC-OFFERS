@@ -47,21 +47,36 @@ class AdminPortalApp {
     }
   }
 
+  sanitizeOffers(list) {
+    const SAMPLE_IDS = new Set(['cpa-001', 'cpa-002', 'cpa-003', 'cpa-004', 'cpa-005']);
+    const SAMPLE_TITLES = new Set([
+      'CashApp $750 Reward Program',
+      'Monzo UK Banking Starter Bonus',
+      'NordVPN 30-Day Risk-Free Trial',
+      'Trade Republic Investment Bonus',
+      'Crypto.com Global Visa Card Sign-Up'
+    ]);
+    if (!Array.isArray(list)) return [];
+    return list.filter(o => o && !SAMPLE_IDS.has(o.id) && !SAMPLE_TITLES.has(o.title));
+  }
+
   async loadData() {
     try {
       const localCustom = localStorage.getItem('sc_offers_custom_data');
       if (localCustom) {
-        this.offers = JSON.parse(localCustom);
+        this.offers = this.sanitizeOffers(JSON.parse(localCustom));
       } else {
         const res = await fetch(`data/offers.json?_t=${Date.now()}`);
         if (res.ok) {
-          this.offers = await res.json();
+          const fetched = await res.json();
+          this.offers = this.sanitizeOffers(fetched);
         }
       }
     } catch (e) {
       this.offers = [];
     }
 
+    this.saveLocalData();
     this.sortOffers();
     this.renderOffersTable();
     this.updateCapacityMeter();
@@ -77,7 +92,10 @@ class AdminPortalApp {
 
   loadTrackingLogs() {
     try {
-      this.trackingLogs = JSON.parse(localStorage.getItem(SC_SECURITY.TRACKING_KEY) || '[]');
+      const logs = JSON.parse(localStorage.getItem(SC_SECURITY.TRACKING_KEY) || '[]');
+      const SAMPLE_IDS = new Set(['cpa-001', 'cpa-002', 'cpa-003', 'cpa-004', 'cpa-005']);
+      this.trackingLogs = Array.isArray(logs) ? logs.filter(t => t && !SAMPLE_IDS.has(t.offerId) && t.title !== 'Test') : [];
+      localStorage.setItem(SC_SECURITY.TRACKING_KEY, JSON.stringify(this.trackingLogs));
     } catch (e) {
       this.trackingLogs = [];
     }
@@ -114,7 +132,7 @@ class AdminPortalApp {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
-            No offers in database. Click "Add New CPA Offer" or "Reset Sample Offers" to get started.
+            No active offers in database. Click "➕ Add New CPA Offer" to create your first campaign.
           </td>
         </tr>
       `;
@@ -238,8 +256,8 @@ class AdminPortalApp {
     document.getElementById('offer-country').value = 'United States|US|🇺🇸';
     document.getElementById('custom-country-group').style.display = 'none';
     document.getElementById('custom-country-input').value = '';
-    document.getElementById('offer-category').value = 'Survey / Reward';
-    document.getElementById('offer-payout').value = '$100 Reward';
+    document.getElementById('offer-category').value = '';
+    document.getElementById('offer-payout').value = '';
     document.getElementById('offer-status').value = 'active';
     document.getElementById('offer-pinned').checked = false;
 
@@ -420,22 +438,6 @@ class AdminPortalApp {
     localStorage.setItem('sc_offers_custom_data', JSON.stringify(this.offers));
   }
 
-  async restoreSampleOffers() {
-    if (!confirm('Reset all offers to default sample campaigns? Unsaved changes will be replaced.')) return;
-    try {
-      const res = await fetch(`data/offers.json?_t=${Date.now()}`);
-      if (res.ok) {
-        this.offers = await res.json();
-      }
-    } catch (e) {
-      this.offers = [];
-    }
-    this.sortOffers();
-    this.saveLocalData();
-    this.renderOffersTable();
-    this.updateCapacityMeter();
-    this.showToast('Sample offers restored.', 'info');
-  }
 
   purgeStartedOffers() {
     try {
@@ -505,9 +507,13 @@ class AdminPortalApp {
     const select = document.getElementById('subid-offer-select');
     if (!select) return;
 
-    select.innerHTML = this.offers.map(o => `
-      <option value="${this.escapeHtml(o.link)}">${this.escapeHtml(o.title)} (${this.escapeHtml(o.country)})</option>
-    `).join('');
+    if (this.offers.length === 0) {
+      select.innerHTML = '<option value="">No offers added yet. Please add a CPA offer first.</option>';
+    } else {
+      select.innerHTML = this.offers.map(o => `
+        <option value="${this.escapeHtml(o.link)}">${this.escapeHtml(o.title)} (${this.escapeHtml(o.country)})</option>
+      `).join('');
+    }
 
     this.updateSubIdUrl();
     document.getElementById('subid-modal').classList.add('open');
@@ -776,9 +782,6 @@ class AdminPortalApp {
 
     const purgeBtn = document.getElementById('purge-started-btn');
     if (purgeBtn) purgeBtn.addEventListener('click', () => this.purgeStartedOffers());
-
-    const restoreBtn = document.getElementById('restore-samples-btn');
-    if (restoreBtn) restoreBtn.addEventListener('click', () => this.restoreSampleOffers());
 
     const clearTrackBtn = document.getElementById('clear-tracking-btn');
     if (clearTrackBtn) clearTrackBtn.addEventListener('click', () => this.clearTrackingLogs());

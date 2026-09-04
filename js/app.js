@@ -118,6 +118,19 @@ class GuestOffersApp {
     return String.fromCodePoint(...codePoints);
   }
 
+  sanitizeOffers(list) {
+    const SAMPLE_IDS = new Set(['cpa-001', 'cpa-002', 'cpa-003', 'cpa-004', 'cpa-005']);
+    const SAMPLE_TITLES = new Set([
+      'CashApp $750 Reward Program',
+      'Monzo UK Banking Starter Bonus',
+      'NordVPN 30-Day Risk-Free Trial',
+      'Trade Republic Investment Bonus',
+      'Crypto.com Global Visa Card Sign-Up'
+    ]);
+    if (!Array.isArray(list)) return [];
+    return list.filter(o => o && !SAMPLE_IDS.has(o.id) && !SAMPLE_TITLES.has(o.title));
+  }
+
   async loadOffers() {
     const grid = document.getElementById('offers-grid');
     if (!grid) return;
@@ -128,14 +141,17 @@ class GuestOffersApp {
 
       if (localCustom) {
         try {
-          data = JSON.parse(localCustom);
+          const parsed = JSON.parse(localCustom);
+          data = this.sanitizeOffers(parsed);
+          localStorage.setItem('sc_offers_custom_data', JSON.stringify(data));
         } catch (e) {}
       }
 
       if (!data) {
         const res = await fetch(`data/offers.json?_t=${Date.now()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        data = await res.json();
+        const fetched = await res.json();
+        data = this.sanitizeOffers(fetched);
       }
 
       this.offers = Array.isArray(data) ? data : [];
@@ -237,6 +253,24 @@ class GuestOffersApp {
 
     if (counter) {
       counter.innerHTML = `Active Offers: <strong>${filtered.length}</strong> Available`;
+    }
+
+    const activeCount = this.offers.filter(o => o.status === 'active').length;
+    const statActive = document.getElementById('stat-active');
+    if (statActive) {
+      statActive.textContent = `${activeCount} / 10 Active`;
+    }
+
+    if (this.offers.length === 0) {
+      if (counter) counter.innerHTML = `Active Offers: <strong>0</strong> Available`;
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⏳</div>
+          <h3>New Offers Dropping Soon</h3>
+          <p>Verified CPA campaigns are being updated. Check back shortly to claim exclusive community rewards!</p>
+        </div>
+      `;
+      return;
     }
 
     if (filtered.length === 0) {
@@ -424,7 +458,7 @@ class GuestOffersApp {
     const statMembers = document.getElementById('stat-members');
 
     if (statRewards) statRewards.textContent = '$249,500+';
-    if (statActive) statActive.textContent = '10 / 10 Max';
+    if (statActive) statActive.textContent = '10 Max Slots';
     if (statMembers) statMembers.textContent = '3,840+';
   }
 
