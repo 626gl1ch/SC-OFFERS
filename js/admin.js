@@ -51,14 +51,10 @@ class AdminPortalApp {
     if (!Array.isArray(list)) return [];
     const SAMPLE_IDS = new Set(['cpa-001', 'cpa-002', 'cpa-003', 'cpa-004', 'cpa-005']);
     return list.filter(o => {
-      if (!o || !o.title) return false;
+      if (!o || !o.title || !o.link) return false;
       if (SAMPLE_IDS.has(o.id)) return false;
-      const t = (o.title || '').toLowerCase();
-      if (t.includes('cashapp') || t.includes('monzo') || t.includes('nordvpn') || t.includes('trade republic') || t.includes('crypto.com')) {
-        return false;
-      }
       const l = (o.link || '').toLowerCase();
-      if (l.includes('example.com')) return false;
+      if (l.includes('example.com') || l.includes('example.org') || l === '#' || l.startsWith('javascript:')) return false;
       return true;
     });
   }
@@ -455,19 +451,21 @@ class AdminPortalApp {
   purgeStartedOffers() {
     try {
       const startedIds = JSON.parse(localStorage.getItem(SC_SECURITY.STARTED_OFFERS_KEY) || '[]');
-      if (startedIds.length === 0) {
-        this.showToast('No started or erased offers found.', 'info');
+      const matchingCount = this.offers.filter(o => startedIds.includes(o.id)).length;
+      if (startedIds.length === 0 && matchingCount === 0) {
+        this.showToast('No started or erased offers found in active database.', 'info');
         return;
       }
 
-      if (!confirm(`Purge ${startedIds.length} started/completed offer(s) permanently from the database?`)) return;
+      const countToReport = matchingCount > 0 ? matchingCount : startedIds.length;
+      if (!confirm(`Purge ${countToReport} completed/started offer(s) permanently from the database?`)) return;
 
       this.offers = this.offers.filter(o => !startedIds.includes(o.id));
       localStorage.removeItem(SC_SECURITY.STARTED_OFFERS_KEY);
       this.saveLocalData();
       this.renderOffersTable();
       this.updateCapacityMeter();
-      this.showToast('Started offers successfully purged!', 'success');
+      this.showToast('Started offers successfully purged! Remember to click "Save & Push Live Changes" to sync.', 'success');
     } catch (e) {
       console.error('Error purging offers', e);
     }
@@ -478,6 +476,12 @@ class AdminPortalApp {
     this.trackingLogs = [];
     localStorage.removeItem(SC_SECURITY.TRACKING_KEY);
     this.renderTrackingTable();
+
+    // If running locally, also sync clearing with backend
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      fetch('/api/clear-tracking', { method: 'POST' }).catch(() => {});
+    }
+
     this.showToast('Tracking logs cleared.', 'info');
   }
 
@@ -663,20 +667,29 @@ class AdminPortalApp {
 
       log('[4/4] Synchronizing with GitHub Pages repository...');
       const cfg = SC_SECURITY.getRepoConfig();
+      let ghSynced = false;
 
       if (cfg.pat) {
         try {
           await this.commitToGitHub(cfg, this.offers, log);
+          ghSynced = true;
         } catch (ghErr) {
-          log(`GitHub commit note: ${ghErr.message}`);
+          log(`GitHub sync note: ${ghErr.message}`);
+          this.showToast(`Saved locally, but GitHub sync note: ${ghErr.message}`, 'error');
         }
       } else {
-        log('GitHub PAT not configured in Settings. Saved locally.');
+        log('GitHub PAT not configured in Settings. Saved locally to browser.');
       }
 
-      if (spinner) spinner.textContent = 'Completed!';
-      log('✨ Update sequence completed successfully! All changes are live.', true);
-      this.showToast('All CPA offers saved & updated successfully!', 'success');
+      if (ghSynced) {
+        if (spinner) spinner.textContent = 'Live Synced!';
+        log('✨ Update sequence completed successfully! All changes are live on GitHub Pages.', true);
+        this.showToast('All CPA offers saved & deployed to GitHub Pages!', 'success');
+      } else if (!cfg.pat) {
+        if (spinner) spinner.textContent = 'Saved Locally';
+        log('ℹ️ Saved to browser storage. Configure GitHub PAT in Settings to enable one-click cloud deployment.');
+        this.showToast('All CPA offers saved locally in browser.', 'info');
+      }
 
     } catch (err) {
       console.error('Push error:', err);
@@ -690,34 +703,38 @@ class AdminPortalApp {
 
   async commitToGitHub(cfg, offersData, log) {
     const jsonString = JSON.stringify(offersData, null, 2);
-    const contentBase64 = btoa(unescape(encodeURIComponent(jsonString)));
+    // Modern UTF-8 safe Base64 encoder without deprecated unescape:
+    const bytes = new TextEncoder().encode(jsonString);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const contentBase64 = btoa(binary);
     const url = `https://api.github.com/repos/${cfg.repoOwner}/${cfg.repoName}/contents/${cfg.filePath}`;
     
     log(`Connecting to GitHub API (${cfg.repoOwner}/${cfg.repoName})...`);
 
+    const authHeader = cfg.pat.startsWith('ghp_') || cfg.pat.startsWith('github_pat_') ? `Bearer ${cfg.pat}` : `token ${cfg.pat}`;
+    const headers = {
+      'Authorization': authHeader,
+      'Accept': 'application/vnd.github.v3+json'
+    };
+
     let sha = null;
-    try {
-      const getRes = await fetch(`${url}?ref=${cfg.branch}`, {
-        headers: {
-          'Authorization': `token ${cfg.pat}`,
-          'Accept': 'application/vnd.github.v3+json'
-        }
-      });
-      if (getRes.ok) {
-        const fileData = await getRes.json();
-        sha = fileData.sha;
-        log(`Existing data file located (SHA: ${sha.substring(0, 7)}).`);
-      } else if (getRes.status !== 404) {
-        if (getRes.status === 401) {
-          throw new Error('Invalid or expired GitHub PAT. Please update token in Settings.');
-        }
-        if (getRes.status === 403) {
-          throw new Error('GitHub API access forbidden (check repository permissions or rate limits).');
-        }
-      }
-    } catch (e) {
-      if (e.message && e.message.includes('GitHub')) throw e;
-      log('Creating initial data file...');
+    const getRes = await fetch(`${url}?ref=${cfg.branch}`, { headers });
+    if (getRes.ok) {
+      const fileData = await getRes.json();
+      sha = fileData.sha;
+      log(`Existing data file located (SHA: ${sha.substring(0, 7)}).`);
+    } else if (getRes.status === 404) {
+      log('Initial data file does not exist yet; creating new file...');
+    } else if (getRes.status === 401) {
+      throw new Error('Invalid or expired GitHub PAT. Please update token in Settings.');
+    } else if (getRes.status === 403) {
+      throw new Error('GitHub API access forbidden (check repository permissions or rate limits).');
+    } else {
+      const errJson = await getRes.json().catch(() => ({}));
+      throw new Error(errJson.message || `GitHub API error (HTTP ${getRes.status})`);
     }
 
     const body = {
@@ -731,15 +748,14 @@ class AdminPortalApp {
     const putRes = await fetch(url, {
       method: 'PUT',
       headers: {
-        'Authorization': `token ${cfg.pat}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/vnd.github.v3+json'
+        ...headers,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(body)
     });
 
     if (!putRes.ok) {
-      const errorData = await putRes.json();
+      const errorData = await putRes.json().catch(() => ({}));
       throw new Error(errorData.message || `HTTP ${putRes.status}`);
     }
 
@@ -853,6 +869,8 @@ class AdminPortalApp {
         const val = document.getElementById('subid-generated-url').value;
         if (val) {
           this.copyToClipboard(val, 'Tracked SubID URL copied to clipboard!');
+        } else {
+          this.showToast('Please select a valid CPA offer to copy tracking link.', 'info');
         }
       });
     }

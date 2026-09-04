@@ -32,6 +32,13 @@ A modern, responsive, full-featured web application designed to manage and distr
 - **One-Click Automated Save & Push**:
   - Click **"Save & Push Live Changes"** to automatically update `data/offers.json`, execute commit workflows, and sync live changes online.
   - Interactive terminal console logs real-time step execution directly on screen.
+- **Multi-Device Live Simulator**:
+  - Live preview guest view inside Mobile (375px), Tablet (768px), and Desktop viewports directly inside the dashboard.
+- **SubID Affiliate Link Generator**:
+  - Automatically formats custom SubID tracking parameters (`sub1` for traffic source, `sub2` for campaign/channel) on any offer link.
+- **Data Backup & Restore Suite**:
+  - One-click **Export JSON** to download timestamped backups of all campaigns.
+  - One-click **Import JSON** with automatic schema sanitization and 10-slot capacity clamping.
 - **Visitor Tracking & Analytics**:
   - Live table recording every offer clicked and started by visitors (timestamp, offer title, country, and status).
   - One-click **"Purge Erased Offers"** button to automatically clean up offers completed by community members.

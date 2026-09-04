@@ -57,7 +57,7 @@ class GuestOffersApp {
   }
 
   /**
-   * Automatic client-side IP Geolocation detection
+   * Automatic client-side IP Geolocation detection with multi-tier fallback
    */
   async detectUserCountry() {
     const geoBanner = document.getElementById('geo-banner');
@@ -65,33 +65,63 @@ class GuestOffersApp {
       const cached = sessionStorage.getItem('sc_detected_country');
       if (cached) {
         const parsed = JSON.parse(cached);
-        this.detectedCountry = parsed.country;
-        this.detectedCountryCode = parsed.code;
-        this.renderGeoBanner(parsed.country, parsed.flag);
-        return;
+        if (parsed && parsed.country) {
+          this.detectedCountry = parsed.country;
+          this.detectedCountryCode = parsed.code;
+          this.renderGeoBanner(parsed.country, parsed.flag);
+          return;
+        }
       }
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      let country = null;
+      let countryCode = null;
 
-      const res = await fetch('https://ipapi.co/json/', { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.country_name) {
-          this.detectedCountry = data.country_name;
-          this.detectedCountryCode = data.country_code;
-          const flag = this.getFlagEmoji(data.country_code);
-
-          sessionStorage.setItem('sc_detected_country', JSON.stringify({
-            country: data.country_name,
-            code: data.country_code,
-            flag
-          }));
-
-          this.renderGeoBanner(data.country_name, flag);
+      // Tier 1: ipwho.is (fast, reliable, CORS-enabled HTTPS)
+      try {
+        const ctrl1 = new AbortController();
+        const tid1 = setTimeout(() => ctrl1.abort(), 1800);
+        const res1 = await fetch('https://ipwho.is/', { signal: ctrl1.signal });
+        clearTimeout(tid1);
+        if (res1.ok) {
+          const d1 = await res1.json();
+          if (d1.success !== false && d1.country) {
+            country = d1.country;
+            countryCode = d1.country_code;
+          }
         }
+      } catch (e1) {}
+
+      // Tier 2: freeipapi.com (fallback)
+      if (!country) {
+        try {
+          const ctrl2 = new AbortController();
+          const tid2 = setTimeout(() => ctrl2.abort(), 1800);
+          const res2 = await fetch('https://freeipapi.com/api/json', { signal: ctrl2.signal });
+          clearTimeout(tid2);
+          if (res2.ok) {
+            const d2 = await res2.json();
+            if (d2.countryName) {
+              country = d2.countryName;
+              countryCode = d2.countryCode;
+            }
+          }
+        } catch (e2) {}
+      }
+
+      if (country && countryCode) {
+        this.detectedCountry = country;
+        this.detectedCountryCode = countryCode;
+        const flag = this.getFlagEmoji(countryCode);
+
+        sessionStorage.setItem('sc_detected_country', JSON.stringify({
+          country,
+          code: countryCode,
+          flag
+        }));
+
+        this.renderGeoBanner(country, flag);
+      } else {
+        if (geoBanner) geoBanner.style.display = 'none';
       }
     } catch (err) {
       if (geoBanner) geoBanner.style.display = 'none';
@@ -122,14 +152,10 @@ class GuestOffersApp {
     if (!Array.isArray(list)) return [];
     const SAMPLE_IDS = new Set(['cpa-001', 'cpa-002', 'cpa-003', 'cpa-004', 'cpa-005']);
     return list.filter(o => {
-      if (!o || !o.title) return false;
+      if (!o || !o.title || !o.link) return false;
       if (SAMPLE_IDS.has(o.id)) return false;
-      const t = (o.title || '').toLowerCase();
-      if (t.includes('cashapp') || t.includes('monzo') || t.includes('nordvpn') || t.includes('trade republic') || t.includes('crypto.com')) {
-        return false;
-      }
       const l = (o.link || '').toLowerCase();
-      if (l.includes('example.com')) return false;
+      if (l.includes('example.com') || l.includes('example.org') || l === '#' || l.startsWith('javascript:')) return false;
       return true;
     });
   }
@@ -449,6 +475,7 @@ class GuestOffersApp {
   }
 
   startUrgencyCountdown() {
+    if (this.urgencyInterval) clearInterval(this.urgencyInterval);
     let secondsLeft = 1120;
     this.urgencyInterval = setInterval(() => {
       secondsLeft = secondsLeft > 0 ? secondsLeft - 1 : 1200;
@@ -468,7 +495,7 @@ class GuestOffersApp {
     const statMembers = document.getElementById('stat-members');
 
     if (statRewards) statRewards.textContent = '$249,500+';
-    if (statActive) statActive.textContent = '10 Max Slots';
+    if (statActive) statActive.textContent = '0 / 10 Active';
     if (statMembers) statMembers.textContent = '3,840+';
   }
 
@@ -640,8 +667,8 @@ class GuestOffersApp {
 
     if (copyShareUrlBtn) {
       copyShareUrlBtn.addEventListener('click', () => {
-        const url = window.location.href;
-        this.copyToClipboard(url, 'Portal link copied to clipboard!');
+        const cleanUrl = window.location.origin + window.location.pathname;
+        this.copyToClipboard(cleanUrl, 'Portal link copied to clipboard!');
       });
     }
 
@@ -663,8 +690,13 @@ class GuestOffersApp {
     });
   }
 
+  getCanonicalUrl() {
+    return window.location.origin + window.location.pathname;
+  }
+
   updateShareLinks() {
-    const currentUrl = encodeURIComponent(window.location.href);
+    const cleanUrl = this.getCanonicalUrl();
+    const currentUrl = encodeURIComponent(cleanUrl);
     const text = encodeURIComponent('Exclusive verified CPA rewards and bonuses now live! Claim yours here:');
 
     const tgBtn = document.getElementById('share-telegram-btn');
@@ -681,7 +713,7 @@ class GuestOffersApp {
     const container = document.getElementById('qr-canvas-container');
     if (!container) return;
 
-    const url = window.location.href;
+    const url = this.getCanonicalUrl();
     container.innerHTML = `
       <div style="background:#fff; padding:16px; border-radius:12px; display:inline-block; box-shadow:0 4px 20px rgba(0,0,0,0.5); min-width:180px; min-height:180px;">
         <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}" alt="QR Code" width="180" height="180" style="display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'color:#1e293b;font-size:0.85rem;padding:30px 10px;font-weight:600;\\'>📲 Open link directly via Copy button below</div>';">

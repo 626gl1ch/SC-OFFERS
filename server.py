@@ -15,6 +15,14 @@ import subprocess
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 
+# Ensure stdout and stderr handle unicode safely on Windows consoles
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 PORT = int(os.environ.get("PORT", 8080))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -113,8 +121,18 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
                     try:
                         subprocess.run(["git", "add", "data/offers.json"], cwd=BASE_DIR, check=True, capture_output=True)
                         commit_res = subprocess.run(["git", "commit", "-m", commit_msg], cwd=BASE_DIR, capture_output=True, text=True)
-                        push_res = subprocess.run(["git", "push"], cwd=BASE_DIR, capture_output=True, text=True)
-                        git_status = f"Committed & pushed to remote branch"
+                        if commit_res.returncode == 0:
+                            push_res = subprocess.run(["git", "push"], cwd=BASE_DIR, capture_output=True, text=True)
+                            if push_res.returncode == 0:
+                                git_status = "Committed & pushed to remote branch"
+                            else:
+                                git_status = f"Git push note: {push_res.stderr.strip()[:60]}"
+                        else:
+                            combined = (commit_res.stdout + commit_res.stderr).lower()
+                            if "nothing to commit" in combined:
+                                git_status = "Saved locally (already up to date with remote)"
+                            else:
+                                git_status = f"Git commit note: {commit_res.stderr.strip()[:60]}"
                     except Exception as git_err:
                         git_status = f"Git sync note: {str(git_err)[:60]}"
 
@@ -127,6 +145,23 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
                     "git": git_status
                 }
                 self.wfile.write(json.dumps(resp).encode("utf-8"))
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode("utf-8"))
+                return
+
+        # Endpoint: /api/clear-tracking
+        if parsed.path == "/api/clear-tracking":
+            try:
+                with open(TRACKING_FILE, "w", encoding="utf-8") as f:
+                    f.write("[]")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "success", "message": "Tracking logs cleared"}).encode("utf-8"))
                 return
             except Exception as e:
                 self.send_response(500)
@@ -179,13 +214,13 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
 def run():
     server_address = ("", PORT)
     httpd = HTTPServer(server_address, SCOffersHandler)
-    print(f"=======================================================")
-    print(f"  ⚡ SC-OFFERS Local Server running on port {PORT}")
+    print("=======================================================")
+    print(f"  [+] SC-OFFERS Local Server running on port {PORT}")
     print(f"  Guest Site:  http://localhost:{PORT}/index.html")
     print(f"  Admin Panel: http://localhost:{PORT}/admin.html")
     print(f"  Health Check: http://localhost:{PORT}/api/health")
     print(f"  Master Password: 554#2Dani.G")
-    print(f"=======================================================")
+    print("=======================================================")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
