@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SC-OFFERS | Admin Control Center</title>
+  <meta name="description" content="Secure administration portal for managing CPA affiliate offers, tracking, and live deployment.">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20%220%22%20%22100%22%20%22100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
+</head>
+<body>
+
+  <!-- Site Header -->
+  <header class="site-header">
+    <div class="container nav-wrap">
+      <a href="admin.html" class="brand">
+        <div class="brand-icon" style="background: linear-gradient(135deg, var(--secondary), var(--accent-cyan));">🛡️</div>
+        <span>SC-OFFERS</span>
+        <span class="brand-badge" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border-color: rgba(99, 102, 241, 0.4);">Admin Panel</span>
+      </a>
+
+      <div class="nav-actions">
+        <a href="index.html" class="btn btn-secondary btn-sm" target="_blank" title="View live guest portal">
+          <span>👀</span>
+          <span>View Guest Site</span>
+        </a>
+        <button id="open-settings-btn" class="btn btn-secondary btn-sm" title="Configure GitHub API and settings">
+          <span>⚙️</span>
+          <span>Settings</span>
+        </button>
+        <button id="logout-btn" class="btn btn-danger btn-sm" style="display: none;">
+          <span>🚪</span>
+          <span>Logout</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Admin Auth Gate (Shown if not logged in) -->
+  <div id="admin-auth-gate" class="container" style="display: none; padding: 80px 20px; max-width: 480px; text-align: center;">
+    <div style="background: var(--bg-card); border: 1px solid var(--bg-card-border); border-radius: var(--radius-lg); padding: 36px; box-shadow: var(--shadow-lg);">
+      <div style="font-size: 3rem; margin-bottom: 16px;">🔒</div>
+      <h2 style="font-size: 1.5rem; margin-bottom: 8px;">Admin Authentication</h2>
+      <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 24px;">
+        Please enter the master password to unlock backend controls and offer management.
+      </p>
+
+      <form id="gate-login-form">
+        <div class="form-group" style="text-align: left;">
+          <label class="form-label" for="gate-password">Admin Password</label>
+          <input 
+            type="password" 
+            id="gate-password" 
+            class="form-input" 
+            placeholder="Enter admin password..." 
+            required 
+            autocomplete="current-password"
+          >
+        </div>
+
+        <div id="gate-error-msg" style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #fda4af; padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.85rem; margin-bottom: 16px;">
+          Invalid password. Please try again.
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px;">
+          <span>Unlock Admin Panel</span>
+          <span>➔</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Main Dashboard (Shown when logged in) -->
+  <main id="admin-dashboard-content" class="container" style="display: none; padding-top: 30px; padding-bottom: 60px;">
+    
+    <!-- Top Action Banner & Quick Share -->
+    <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(16, 185, 129, 0.15)); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: var(--radius-lg); padding: 20px 24px; margin-bottom: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+      <div>
+        <h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+          <span>🚀</span> Share Active Offers with Your Community
+        </h2>
+        <p style="color: var(--text-secondary); font-size: 0.88rem;">
+          Direct your community members to the guest portal. They can filter by their country, start offers, and completed items will automatically erase.
+        </p>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button id="copy-community-link-btn" class="btn btn-secondary">
+          <span>📋</span>
+          <span>Copy Guest Link</span>
+        </button>
+        <button id="open-add-modal-btn" class="btn btn-primary">
+          <span>➕</span>
+          <span>Add New CPA Offer</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Capacity & Slots Monitor (Up to 10 offers) -->
+    <div class="slot-capacity-card">
+      <div class="capacity-info">
+        <h4>Offer Slot Capacity Limit</h4>
+        <p id="slot-capacity-text">Currently managing 0 of 10 maximum active CPA offers</p>
+      </div>
+
+      <div class="slot-progress-wrap">
+        <div class="slot-progress-labels">
+          <span>Active Slots</span>
+          <span id="slot-count-badge">0 / 10</span>
+        </div>
+        <div class="slot-progress-bar">
+          <div class="slot-progress-fill" id="slot-progress-bar" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div>
+        <button id="save-push-btn" class="btn btn-primary btn-lg" style="box-shadow: 0 4px 20px rgba(16, 185, 129, 0.45);">
+          <span>💾</span>
+          <span>Save &amp; Push Live Changes</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Execution Status Console (Collapsed by default, expands on push) -->
+    <div id="push-console-wrapper" style="display: none; margin-bottom: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+          Automated Update &amp; Push Console
+        </span>
+        <span id="push-status-spinner" style="font-size: 0.85rem; color: var(--primary);">Running automated commands...</span>
+      </div>
+      <div class="push-console" id="push-console-logs">
+        <!-- Logs injected here -->
+      </div>
+    </div>
+
+    <!-- Active Offers Table -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+      <h3 style="font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+        <span>📋</span> Active CPA Marketing Offers
+      </h3>
+      <div style="display: flex; gap: 10px;">
+        <button id="purge-started-btn" class="btn btn-secondary btn-sm" title="Remove offers completed/started by guests">
+          <span>🧹</span>
+          <span>Purge Erased Offers</span>
+        </button>
+        <button id="restore-samples-btn" class="btn btn-secondary btn-sm">
+          <span>🔄</span>
+          <span>Reset Sample Offers</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th style="width: 50px;">Slot</th>
+            <th>Country</th>
+            <th>Offer Title &amp; Description</th>
+            <th>Affiliate CPA Link</th>
+            <th>Payout / Reward</th>
+            <th>Status</th>
+            <th style="text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="admin-offers-tbody">
+          <!-- Injected dynamically via js/admin.js -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tracking & Clicks Analytics -->
+    <div style="margin-top: 40px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <h3 style="font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <span>📊</span> Guest Activity &amp; Completed Offers Tracker
+        </h3>
+        <button id="clear-tracking-btn" class="btn btn-secondary btn-sm">
+          <span>🗑️</span>
+          <span>Clear Logs</span>
+        </button>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Offer Title</th>
+              <th>Country</th>
+              <th>Payout</th>
+              <th>Event Status</th>
+            </tr>
+          </thead>
+          <tbody id="admin-tracking-tbody">
+            <!-- Injected dynamically via js/admin.js -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Add / Edit Offer Modal -->
+  <div class="modal-overlay" id="offer-modal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title" id="offer-modal-title">
+          <span>➕</span>
+          <span>Add New CPA Offer</span>
+        </h3>
+        <button class="modal-close" id="close-offer-modal-btn">&times;</button>
+      </div>
+
+      <form id="offer-form">
+        <input type="hidden" id="offer-id">
+
+        <div class="form-group">
+          <label class="form-label" for="offer-title">Offer Title / Campaign Name *</label>
+          <input 
+            type="text" 
+            id="offer-title" 
+            class="form-input" 
+            placeholder="e.g. CashApp $750 Direct Bonus" 
+            required
+          >
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="offer-link">CPA Affiliate Destination Link *</label>
+          <input 
+            type="url" 
+            id="offer-link" 
+            class="form-input" 
+            placeholder="https://your-cpa-network.com/track/offer-id..." 
+            required
+          >
+          <small style="color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 4px;">
+            The exact affiliate/tracking URL where community members complete the offer.
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="offer-desc">Short Description / Instructions *</label>
+          <textarea 
+            id="offer-desc" 
+            class="form-textarea" 
+            placeholder="e.g. Complete 3-minute questionnaire, confirm email address, and qualify for reward."
+            required
+          ></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="offer-country">Target Country *</label>
+            <select id="offer-country" class="form-select" required>
+              <option value="United States|US|🇺🇸">🇺🇸 United States (US)</option>
+              <option value="United Kingdom|GB|🇬🇧">🇬🇧 United Kingdom (UK)</option>
+              <option value="Canada|CA|🇨🇦">🇨🇦 Canada (CA)</option>
+              <option value="Australia|AU|🇦🇺">🇦🇺 Australia (AU)</option>
+              <option value="Germany|DE|🇩🇪">🇩🇪 Germany (DE)</option>
+              <option value="France|FR|🇫🇷">🇫🇷 France (FR)</option>
+              <option value="Spain|ES|🇪🇸">🇪🇸 Spain (ES)</option>
+              <option value="Italy|IT|🇮🇹">🇮🇹 Italy (IT)</option>
+              <option value="Nigeria|NG|🇳🇬">🇳🇬 Nigeria (NG)</option>
+              <option value="South Africa|ZA|🇿🇦">🇿🇦 South Africa (ZA)</option>
+              <option value="Worldwide|WW|🌐">🌐 Worldwide / Global</option>
+              <option value="CUSTOM">➕ Custom Country...</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="custom-country-group" style="display: none;">
+            <label class="form-label" for="custom-country-input">Custom Country Name &amp; Flag</label>
+            <input 
+              type="text" 
+              id="custom-country-input" 
+              class="form-input" 
+              placeholder="e.g. 🇧🇷 Brazil"
+            >
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="offer-category">Category / Offer Type</label>
+            <input 
+              type="text" 
+              id="offer-category" 
+              class="form-input" 
+              placeholder="e.g. Survey / App / Finance"
+            >
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="offer-payout">Payout / Reward Badge</label>
+            <input 
+              type="text" 
+              id="offer-payout" 
+              class="form-input" 
+              placeholder="e.g. $50 Cash, Free Trial, €25 Stock"
+            >
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="offer-status">Offer Status</label>
+            <select id="offer-status" class="form-select">
+              <option value="active">Active (Visible to Guests)</option>
+              <option value="paused">Paused (Hidden)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('offer-modal').classList.remove('open')">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <span>Save Offer</span>
+            <span>💾</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Settings & GitHub Config Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>⚙️</span>
+          <span>System &amp; Sync Settings</span>
+        </h3>
+        <button class="modal-close" id="close-settings-modal-btn">&times;</button>
+      </div>
+
+      <form id="settings-form">
+        <div class="form-group">
+          <label class="form-label" for="settings-repo-owner">GitHub Repo Owner</label>
+          <input type="text" id="settings-repo-owner" class="form-input" value="626gl1ch">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="settings-repo-name">Repository Name</label>
+          <input type="text" id="settings-repo-name" class="form-input" value="SC-OFFERS">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="settings-branch">Branch</label>
+          <input type="text" id="settings-branch" class="form-input" value="main">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="settings-pat">GitHub Personal Access Token (PAT)</label>
+          <input 
+            type="password" 
+            id="settings-pat" 
+            class="form-input" 
+            placeholder="ghp_..."
+            autocomplete="off"
+          >
+          <small style="color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 4px;">
+            Stored safely in your browser session for automated commits directly to GitHub Pages.
+          </small>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
+          <button type="button" id="test-gh-btn" class="btn btn-secondary btn-sm">
+            <span>🔌</span>
+            <span>Test Connection</span>
+          </button>
+
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('settings-modal').classList.remove('open')">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary btn-sm">
+              Save Settings
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/crypto-util.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

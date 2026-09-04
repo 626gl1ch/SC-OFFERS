@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SC-OFFERS | Premium CPA Marketing & Rewards Hub</title>
+  <meta name="description" content="Discover and complete premium verified CPA marketing offers. Filter by country and earn instant bonuses.">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20%220%22%20%22100%22%20%22100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body>
+
+  <!-- Site Header -->
+  <header class="site-header">
+    <div class="container nav-wrap">
+      <a href="index.html" class="brand">
+        <div class="brand-icon">⚡</div>
+        <span>SC-OFFERS</span>
+        <span class="brand-badge">Guest Portal</span>
+      </a>
+
+      <div class="nav-actions">
+        <button id="open-admin-login-btn" class="btn btn-admin">
+          <span>🔒</span>
+          <span>Admin Login</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Hero Section -->
+  <main class="container">
+    <section class="hero">
+      <div class="hero-pill">
+        <span class="pulse-dot"></span>
+        <span>LIVE VERIFIED CPA OFFERS</span>
+      </div>
+      <h1 class="hero-title">
+        Discover Verified <span>CPA Marketing Offers</span>
+      </h1>
+      <p class="hero-subtitle">
+        Browse top-performing affiliate rewards curated for your country. Click to begin any offer—once started, the offer automatically clears so you stay focused on fresh opportunities.
+      </p>
+    </section>
+
+    <!-- Filter & Controls Bar -->
+    <section class="control-bar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Search offers by name, description, country..." autocomplete="off">
+      </div>
+
+      <div class="country-filters" id="country-filters">
+        <!-- Injected dynamically via js/app.js -->
+        <button class="country-pill active" data-country="ALL">🌍 All Countries</button>
+      </div>
+
+      <div class="offers-stat" id="offers-counter">
+        Active Offers: <strong>Loading...</strong>
+      </div>
+    </section>
+
+    <!-- Dynamic Offers Grid -->
+    <section class="offers-grid" id="offers-grid">
+      <!-- Injected dynamically via js/app.js -->
+      <div class="empty-state">
+        <div class="empty-icon">⏳</div>
+        <h3>Loading active offers...</h3>
+        <p>Fetching the latest verified CPA campaigns.</p>
+      </div>
+    </section>
+
+    <!-- Community How-It-Works Guide -->
+    <section style="background: var(--bg-card); border: 1px solid var(--bg-card-border); border-radius: var(--radius-lg); padding: 30px; margin-bottom: 50px;">
+      <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+        <span>🎯</span> How Community CPA Offers Work
+      </h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
+        <div style="background: rgba(255,255,255,0.03); padding: 18px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
+          <div style="font-size: 1.5rem; margin-bottom: 8px;">1️⃣ Select Your Country</div>
+          <p style="font-size: 0.88rem; color: var(--text-secondary);">
+            Use the country filter tags to pick your jurisdiction. Each CPA affiliate offer has verified geographical eligibility.
+          </p>
+        </div>
+        <div style="background: rgba(255,255,255,0.03); padding: 18px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
+          <div style="font-size: 1.5rem; margin-bottom: 8px;">2️⃣ Click "Start Offer"</div>
+          <p style="font-size: 0.88rem; color: var(--text-secondary);">
+            Open the official affiliate link in a secure tab and follow the quick instructions (e.g. download, sign up, survey).
+          </p>
+        </div>
+        <div style="background: rgba(255,255,255,0.03); padding: 18px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
+          <div style="font-size: 1.5rem; margin-bottom: 8px;">3️⃣ Automatic Update & Erase</div>
+          <p style="font-size: 0.88rem; color: var(--text-secondary);">
+            Once you click and start an offer, the platform automatically detects and erases it from your feed so you never repeat completed tasks.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <p>&copy; 2026 SC-OFFERS Platform &bull; Real-time CPA Marketing &amp; Affiliate Tracker &bull; All Rights Reserved.</p>
+    </div>
+  </footer>
+
+  <!-- Admin Login Modal -->
+  <div class="modal-overlay" id="admin-login-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>🔒</span>
+          <span>Admin Portal Access</span>
+        </h3>
+        <button class="modal-close" id="close-admin-login-btn">&times;</button>
+      </div>
+
+      <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 20px;">
+        Enter your administrative security password to access backend controls, manage CPA offers, and push live updates.
+      </p>
+
+      <form id="admin-login-form">
+        <div class="form-group">
+          <label class="form-label" for="admin-password">Master Admin Password</label>
+          <input 
+            type="password" 
+            id="admin-password" 
+            class="form-input" 
+            placeholder="Enter password..." 
+            required 
+            autocomplete="current-password"
+          >
+        </div>
+
+        <div id="admin-login-error" style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #fda4af; padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.85rem; margin-bottom: 16px;">
+          Invalid password. Please try again.
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('admin-login-modal').classList.remove('open')">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <span>Unlock Dashboard</span>
+            <span>➔</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/crypto-util.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
