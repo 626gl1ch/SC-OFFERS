@@ -294,6 +294,7 @@ class AdminPortalApp {
       customInput.value = `${offer.flag || ''} ${offer.country || ''}`.trim();
     } else {
       customGroup.style.display = 'none';
+      customInput.value = '';
     }
 
     document.getElementById('offer-category').value = offer.category || '';
@@ -401,7 +402,7 @@ class AdminPortalApp {
     this.sortOffers();
     this.saveLocalData();
     this.renderOffersTable();
-    this.showToast(offer.pinned ? 'Offer pinned to top.' : 'Offer unpinned.', 'info');
+    this.showToast(offer.pinned ? 'Offer pinned to top. Click "Save & Push Live Changes" to sync.' : 'Offer unpinned. Click "Save & Push Live Changes" to sync.', 'info');
   }
 
   toggleStatus(offerId) {
@@ -422,7 +423,7 @@ class AdminPortalApp {
     this.saveLocalData();
     this.renderOffersTable();
     this.updateCapacityMeter();
-    this.showToast(`Offer is now ${offer.status}.`, 'info');
+    this.showToast(`Offer is now ${offer.status}. Click "Save & Push Live Changes" to sync.`, 'info');
   }
 
   deleteOffer(offerId) {
@@ -431,7 +432,7 @@ class AdminPortalApp {
     this.saveLocalData();
     this.renderOffersTable();
     this.updateCapacityMeter();
-    this.showToast('Offer deleted.', 'info');
+    this.showToast('Offer deleted. Click "Save & Push Live Changes" to sync.', 'info');
   }
 
   saveLocalData() {
@@ -486,12 +487,24 @@ class AdminPortalApp {
       try {
         const imported = JSON.parse(e.target.result);
         if (Array.isArray(imported)) {
-          this.offers = imported;
+          const clean = this.sanitizeOffers(imported);
+          const activeCount = clean.filter(o => o.status === 'active').length;
+          if (activeCount > this.maxSlots) {
+            alert(`Note: The backup contained ${activeCount} active offers. Exceeding offers have been set to paused to respect the ${this.maxSlots}-slot limit.`);
+            let count = 0;
+            clean.forEach(o => {
+              if (o.status === 'active') {
+                count++;
+                if (count > this.maxSlots) o.status = 'paused';
+              }
+            });
+          }
+          this.offers = clean;
           this.sortOffers();
           this.saveLocalData();
           this.renderOffersTable();
           this.updateCapacityMeter();
-          this.showToast(`Successfully imported ${imported.length} offers!`, 'success');
+          this.showToast(`Successfully imported ${clean.length} offers! Remember to Save & Push.`, 'success');
         } else {
           alert('Invalid backup file format. Expected a JSON array of offers.');
         }
@@ -535,11 +548,20 @@ class AdminPortalApp {
     try {
       const url = new URL(base);
       if (sub1) url.searchParams.set('sub1', sub1);
+      else url.searchParams.delete('sub1');
       if (sub2) url.searchParams.set('sub2', sub2);
+      else url.searchParams.delete('sub2');
       out.value = url.toString();
     } catch (e) {
-      const separator = base.includes('?') ? '&' : '?';
-      out.value = `${base}${separator}sub1=${encodeURIComponent(sub1)}&sub2=${encodeURIComponent(sub2)}`;
+      const params = [];
+      if (sub1) params.push(`sub1=${encodeURIComponent(sub1)}`);
+      if (sub2) params.push(`sub2=${encodeURIComponent(sub2)}`);
+      if (params.length > 0) {
+        const separator = base.includes('?') ? '&' : '?';
+        out.value = `${base}${separator}${params.join('&')}`;
+      } else {
+        out.value = base;
+      }
     }
   }
 

@@ -673,8 +673,8 @@ class GuestOffersApp {
 
     const url = window.location.href;
     container.innerHTML = `
-      <div style="background:#fff; padding:16px; border-radius:12px; display:inline-block; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}" alt="QR Code" width="180" height="180" style="display:block;">
+      <div style="background:#fff; padding:16px; border-radius:12px; display:inline-block; box-shadow:0 4px 20px rgba(0,0,0,0.5); min-width:180px; min-height:180px;">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}" alt="QR Code" width="180" height="180" style="display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'color:#1e293b;font-size:0.85rem;padding:30px 10px;font-weight:600;\\'>📲 Open link directly via Copy button below</div>';">
       </div>
       <p style="font-size:0.8rem; color:#94a3b8; margin-top:10px;">Scan with any smartphone camera to open offers</p>
     `;

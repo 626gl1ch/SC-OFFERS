@@ -99,6 +99,8 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
             try:
                 payload = json.loads(body.decode("utf-8"))
                 offers_data = payload.get("offers", [])
+                if not isinstance(offers_data, list):
+                    raise ValueError("Field 'offers' must be a JSON array")
                 commit_msg = payload.get("message", "Update CPA offers via Admin Panel")
 
                 # 1. Write to data/offers.json
@@ -139,6 +141,8 @@ class SCOffersHandler(SimpleHTTPRequestHandler):
             body = self.rfile.read(content_length)
             try:
                 event = json.loads(body.decode("utf-8"))
+                if not isinstance(event, dict):
+                    raise ValueError("Tracking event must be a JSON object")
                 tracking_data = []
                 if os.path.exists(TRACKING_FILE):
                     try:
